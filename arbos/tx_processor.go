@@ -116,7 +116,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		evm.IncrementDepth() // fake a call
 		tracer := evm.Config.Tracer
 		from := p.msg.From
-		tracer.CaptureStart(evm, from, *p.msg.To, false, p.msg.Data, p.msg.GasLimit, p.msg.Value)
+		tracer.CaptureStart(from, *p.msg.To, false, p.msg.Data, p.msg.GasLimit, p.msg.Value)
 
 		tracingInfo = util.NewTracingInfo(evm, from, *p.msg.To, util.TracingDuringEVM)
 		p.state = arbosState.OpenSystemArbosStateOrPanic(evm.StateDB, tracingInfo, false)

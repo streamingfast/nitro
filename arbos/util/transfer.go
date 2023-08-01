@@ -10,6 +10,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/offchainlabs/nitro/util/arbmath"
@@ -32,10 +33,10 @@ func TransferBalance(
 		if arbmath.BigLessThan(balance, amount) {
 			return fmt.Errorf("%w: addr %v have %v want %v", vm.ErrInsufficientBalance, *from, balance, amount)
 		}
-		evm.StateDB.SubBalance(*from, amount)
+		evm.StateDB.SubBalance(*from, amount, state.BalanceChangeTransfer)
 	}
 	if to != nil {
-		evm.StateDB.AddBalance(*to, amount)
+		evm.StateDB.AddBalance(*to, amount, state.BalanceChangeTransfer)
 	}
 	if evm.Config.Debug {
 		tracer := evm.Config.Tracer
