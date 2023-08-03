@@ -43,6 +43,7 @@ jobs:
           # - 2 docker tags: `{geth|bsc|...}-latest` and `{git-tag}`
           tags: |
             type=ref,enable=true,priority=600,prefix=nitro-,suffix=,event=branch
+            type=sha
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
