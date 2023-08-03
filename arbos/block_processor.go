@@ -215,7 +215,7 @@ func ProduceBlockAdvanced(
 	gethGas := core.GasPool(l2pricing.GethBlockGasLimit)
 
 	fh := tracers.NewFirehoseLogger()
-	fh.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil))
+	fh.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(0), header, header)
 	defer fh.OnBlockEnd(nil)
 	for len(txes) > 0 || len(redeems) > 0 {
 		// repeatedly process the next tx, doing redeems created along the way in FIFO order
