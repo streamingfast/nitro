@@ -216,8 +216,8 @@ func ProduceBlockAdvanced(
 
 	fh := tracers.NewFirehoseLogger()
 
-	// fake block is it ok ? TODO check
-	fh.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(0), header, header)
+	lastFinalBlock := chainContext.(*core.BlockChain).CurrentFinalBlock()
+	fh.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(1), lastFinalBlock, lastFinalBlock)
 	defer fh.OnBlockEnd(nil)
 	for len(txes) > 0 || len(redeems) > 0 {
 		// repeatedly process the next tx, doing redeems created along the way in FIFO order
