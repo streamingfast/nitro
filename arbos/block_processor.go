@@ -215,6 +215,8 @@ func ProduceBlockAdvanced(
 	gethGas := core.GasPool(l2pricing.GethBlockGasLimit)
 
 	fh := tracers.NewFirehoseLogger()
+
+	// fake block is it ok ? TODO check
 	fh.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(0), header, header)
 	defer fh.OnBlockEnd(nil)
 	for len(txes) > 0 || len(redeems) > 0 {
