@@ -35,14 +35,17 @@ func CreateExecutionNode(
 	recordingDbConfig *arbitrum.RecordingDatabaseConfig,
 	seqConfigFetcher SequencerConfigFetcher,
 	precheckConfigFetcher TxPreCheckerConfigFetcher,
+	withFirehose bool,
 ) (*ExecutionNode, error) {
 	execEngine, err := NewExecutionEngine(l2BlockChain)
 	if err != nil {
 		return nil, err
 	}
 
-	fh := tracers.NewFirehoseLogger()
-	execEngine.SetLogger(fh)
+	if withFirehose {
+		fh := tracers.NewFirehoseLogger()
+		execEngine.SetLogger(fh)
+	}
 
 	recorder := NewBlockRecorder(recordingDbConfig, execEngine, chainDB)
 	var txPublisher TransactionPublisher

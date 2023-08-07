@@ -326,6 +326,7 @@ type Config struct {
 	SyncMonitor          SyncMonitorConfig                `koanf:"sync-monitor"`
 	Dangerous            DangerousConfig                  `koanf:"dangerous"`
 	Caching              execution.CachingConfig          `koanf:"caching"`
+	Firehose             bool                             `koanf:"firehose"`
 	Archive              bool                             `koanf:"archive"`
 	TxLookupLimit        uint64                           `koanf:"tx-lookup-limit"`
 	TransactionStreamer  TransactionStreamerConfig        `koanf:"transaction-streamer" reload:"hot"`
@@ -409,6 +410,7 @@ func ConfigAddOptions(prefix string, f *flag.FlagSet, feedInputEnable bool, feed
 
 	archiveMsg := fmt.Sprintf("retain past block state (deprecated, please use %v.caching.archive)", prefix)
 	f.Bool(prefix+".archive", ConfigDefault.Archive, archiveMsg)
+	f.Bool(prefix+".firehose", ConfigDefault.Firehose, "output firehose blocks on STDOUT")
 }
 
 var ConfigDefault = Config{
@@ -430,6 +432,7 @@ var ConfigDefault = Config{
 	SyncMonitor:          DefaultSyncMonitorConfig,
 	Dangerous:            DefaultDangerousConfig,
 	Archive:              false,
+	Firehose:             false,
 	TxLookupLimit:        126_230_400, // 1 year at 4 blocks per second
 	Caching:              execution.DefaultCachingConfig,
 	TransactionStreamer:  DefaultTransactionStreamerConfig,
@@ -612,7 +615,7 @@ func createNodeImpl(
 	txprecheckConfigFetcher := func() *execution.TxPreCheckerConfig { return &configFetcher.Get().TxPreChecker }
 	exec, err := execution.CreateExecutionNode(stack, chainDb, l2BlockChain, l1Reader, syncMonitor,
 		config.ForwardingTarget(), &config.Forwarder, config.RPC, &config.RecordingDB,
-		sequencerConfigFetcher, txprecheckConfigFetcher)
+		sequencerConfigFetcher, txprecheckConfigFetcher, config.Firehose)
 	if err != nil {
 		return nil, err
 	}
