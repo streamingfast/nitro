@@ -33,6 +33,7 @@ type TransactionStreamerInterface interface {
 type ExecutionEngine struct {
 	stopwaiter.StopWaiter
 
+	logger   core.BlockchainLogger
 	bc       *core.BlockChain
 	streamer TransactionStreamerInterface
 	recorder *BlockRecorder
@@ -55,6 +56,10 @@ func NewExecutionEngine(bc *core.BlockChain) (*ExecutionEngine, error) {
 		resequenceChan:   make(chan []*arbostypes.MessageWithMetadata),
 		newBlockNotifier: make(chan struct{}, 1),
 	}, nil
+}
+
+func (s *ExecutionEngine) SetLogger(logger core.BlockchainLogger) {
+	s.logger = logger
 }
 
 func (s *ExecutionEngine) SetRecorder(recorder *BlockRecorder) {
@@ -306,6 +311,7 @@ func (s *ExecutionEngine) sequenceTransactionsWithBlockMutex(header *arbostypes.
 		s.bc,
 		s.bc.Config(),
 		hooks,
+		s.logger,
 	)
 	if err != nil {
 		return nil, err
@@ -458,6 +464,7 @@ func (s *ExecutionEngine) createBlockFromNextMessage(msg *arbostypes.MessageWith
 		s.bc,
 		s.bc.Config(),
 		s.streamer.FetchBatch,
+		s.logger,
 	)
 
 	return block, statedb, receipts, err

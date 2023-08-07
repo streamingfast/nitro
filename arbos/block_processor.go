@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
@@ -134,6 +133,7 @@ func ProduceBlock(
 	chainContext core.ChainContext,
 	chainConfig *params.ChainConfig,
 	batchFetcher arbostypes.FallibleBatchFetcher,
+	logger core.BlockchainLogger,
 ) (*types.Block, types.Receipts, error) {
 	var batchFetchErr error
 	txes, err := ParseL2Transactions(message, chainConfig.ChainID, func(batchNum uint64, batchHash common.Hash) []byte {
@@ -159,7 +159,7 @@ func ProduceBlock(
 
 	hooks := NoopSequencingHooks()
 	return ProduceBlockAdvanced(
-		message.Header, txes, delayedMessagesRead, lastBlockHeader, statedb, chainContext, chainConfig, hooks,
+		message.Header, txes, delayedMessagesRead, lastBlockHeader, statedb, chainContext, chainConfig, hooks, logger,
 	)
 }
 
@@ -173,6 +173,7 @@ func ProduceBlockAdvanced(
 	chainContext core.ChainContext,
 	chainConfig *params.ChainConfig,
 	sequencingHooks *SequencingHooks,
+	logger core.BlockchainLogger,
 ) (*types.Block, types.Receipts, error) {
 
 	state, err := arbosState.OpenSystemArbosState(statedb, nil, true)
@@ -180,6 +181,7 @@ func ProduceBlockAdvanced(
 		return nil, nil, err
 	}
 
+	statedb.SetLogger(logger)
 	if statedb.GetUnexpectedBalanceDelta().BitLen() != 0 {
 		return nil, nil, errors.New("ProduceBlock called with dirty StateDB (non-zero unexpected balance delta)")
 	}
@@ -214,11 +216,11 @@ func ProduceBlockAdvanced(
 	// We'll check that the block can fit each message, so this pool is set to not run out
 	gethGas := core.GasPool(l2pricing.GethBlockGasLimit)
 
-	fh := tracers.NewFirehoseLogger()
-
 	lastFinalBlock := chainContext.(*core.BlockChain).CurrentFinalBlock()
-	fh.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(1), lastFinalBlock, lastFinalBlock)
-	defer fh.OnBlockEnd(nil)
+	if logger != nil {
+		logger.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(1), lastFinalBlock, lastFinalBlock)
+		defer logger.OnBlockEnd(nil)
+	}
 	for len(txes) > 0 || len(redeems) > 0 {
 		// repeatedly process the next tx, doing redeems created along the way in FIFO order
 
@@ -318,7 +320,7 @@ func ProduceBlockAdvanced(
 				header,
 				tx,
 				&header.GasUsed,
-				vm.Config{Tracer: fh},
+				vm.Config{Tracer: logger},
 				func(result *core.ExecutionResult) error {
 					return hooks.PostTxFilter(header, state, tx, sender, dataGas, result)
 				},
@@ -441,6 +443,9 @@ func ProduceBlockAdvanced(
 	// Touch up the block hashes in receipts
 	tmpBlock := types.NewBlock(header, complete, nil, receipts, trie.NewStackTrie(nil))
 	blockHash := tmpBlock.Hash()
+	if logger != nil {
+		logger.OnBlockUpdate(tmpBlock, big.NewInt(1))
+	}
 
 	for _, receipt := range receipts {
 		receipt.BlockHash = blockHash

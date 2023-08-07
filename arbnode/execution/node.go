@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/arbitrum"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/eth/filters"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/offchainlabs/nitro/util/headerreader"
@@ -39,6 +40,10 @@ func CreateExecutionNode(
 	if err != nil {
 		return nil, err
 	}
+
+	fh := tracers.NewFirehoseLogger()
+	execEngine.SetLogger(fh)
+
 	recorder := NewBlockRecorder(recordingDbConfig, execEngine, chainDB)
 	var txPublisher TransactionPublisher
 	var sequencer *Sequencer
