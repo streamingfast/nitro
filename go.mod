@@ -249,7 +249,7 @@ require (
 	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447 // indirect
 	github.com/streamingfast/dstore v0.1.1-0.20220607202639-35118aeaf648 // indirect
 	github.com/streamingfast/eth-go v0.0.0-20220421042603-ebe2c94fcc92 // indirect
-	github.com/streamingfast/firehose-ethereum/types v0.0.0-20230802141317-beada4442970 // indirect
+	github.com/streamingfast/firehose-ethereum/types v0.0.0-20230807192943-8699fc0a6516 // indirect
 	github.com/streamingfast/jsonpb v0.0.0-20210811021341-3670f0aa02d0 // indirect
 	github.com/streamingfast/logging v0.0.0-20220304214715-bc750a74b424 // indirect
 	github.com/streamingfast/opaque v0.0.0-20210811180740-0c01d37ea308 // indirect
