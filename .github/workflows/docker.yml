@@ -5,8 +5,9 @@ on:
   workflow_dispatch:
   pull_request:
   push:
+    tags:
+      - "v*"
     branches:
-      - master
       - develop
 
 env:
@@ -39,10 +40,10 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # We tag latest only release of the form <variant>-v<major>.<minor>.<patch>-fh2.1 so "rc/beta" version are not flagged as latest
-          # - 2 docker tags: `{geth|bsc|...}-latest` and `{git-tag}`
+          # 3 tags: "v1.2.3", "latest", "deadbeef"
           tags: |
-            type=ref,enable=true,priority=600,prefix=nitro-,suffix=,event=branch
+            type=ref,event=tag,priority=1000
+            type=match,pattern=^v\d.\d.\d-fh,value=latest
             type=sha
 
       - name: Build and push Docker image
