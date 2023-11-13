@@ -6,7 +6,7 @@ on:
   pull_request:
   push:
     tags:
-      - "v*"
+      - "v*-fh"
     branches:
       - develop
 
