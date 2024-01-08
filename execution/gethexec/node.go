@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/filters"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
@@ -146,11 +147,16 @@ func CreateExecutionNode(
 	l2BlockChain *core.BlockChain,
 	l1client arbutil.L1Interface,
 	configFetcher ConfigFetcher,
+	withFirehose bool,
 ) (*ExecutionNode, error) {
 	config := configFetcher()
 	execEngine, err := NewExecutionEngine(l2BlockChain)
 	if err != nil {
 		return nil, err
+	}
+	if withFirehose {
+		fh := tracers.NewFirehoseLogger()
+		execEngine.SetLogger(fh)
 	}
 	recorder := NewBlockRecorder(&config.RecordingDatabase, execEngine, chainDB)
 	var txPublisher TransactionPublisher

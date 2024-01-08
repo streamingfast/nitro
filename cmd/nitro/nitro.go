@@ -517,6 +517,7 @@ func mainImpl() int {
 		l2BlockChain,
 		l1Client,
 		func() *gethexec.Config { return &liveNodeConfig.Get().Execution },
+		nodeConfig.Node.Firehose,
 	)
 	if err != nil {
 		log.Error("failed to create execution node", "err", err)

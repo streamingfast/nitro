@@ -87,6 +87,7 @@ type Config struct {
 	DataAvailability    das.DataAvailabilityConfig  `koanf:"data-availability"`
 	SyncMonitor         SyncMonitorConfig           `koanf:"sync-monitor"`
 	Dangerous           DangerousConfig             `koanf:"dangerous"`
+	Firehose            bool                        `koanf:"firehose"`
 	TransactionStreamer TransactionStreamerConfig   `koanf:"transaction-streamer" reload:"hot"`
 	Maintenance         MaintenanceConfig           `koanf:"maintenance" reload:"hot"`
 	ResourceMgmt        resourcemanager.Config      `koanf:"resource-mgmt" reload:"hot"`
@@ -132,6 +133,7 @@ func (c *Config) ValidatorRequired() bool {
 
 func ConfigAddOptions(prefix string, f *flag.FlagSet, feedInputEnable bool, feedOutputEnable bool) {
 	f.Bool(prefix+".sequencer", ConfigDefault.Sequencer, "enable sequencer")
+	f.Bool(prefix+".firehose", ConfigDefault.Firehose, "output firehose blocks on STDOUT")
 	headerreader.AddOptions(prefix+".parent-chain-reader", f)
 	InboxReaderConfigAddOptions(prefix+".inbox-reader", f)
 	DelayedSequencerConfigAddOptions(prefix+".delayed-sequencer", f)
@@ -162,6 +164,7 @@ var ConfigDefault = Config{
 	DataAvailability:    das.DefaultDataAvailabilityConfig,
 	SyncMonitor:         DefaultSyncMonitorConfig,
 	Dangerous:           DefaultDangerousConfig,
+	Firehose:            false,
 	TransactionStreamer: DefaultTransactionStreamerConfig,
 	ResourceMgmt:        resourcemanager.DefaultConfig,
 	Maintenance:         DefaultMaintenanceConfig,
