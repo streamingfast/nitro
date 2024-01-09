@@ -38,7 +38,9 @@ func TransferBalance(
 	if to != nil {
 		evm.StateDB.AddBalance(*to, amount, state.BalanceChangeTransfer)
 	}
-	if tracer := evm.Config.Tracer; tracer != nil {
+	tracer := evm.Config.Tracer
+	tracer = nil // FIXME: this was broken in firehose v2.1.0-fh
+	if tracer != nil {
 		if evm.Depth() != 0 && scenario != TracingDuringEVM {
 			// A non-zero depth implies this transfer is occurring inside EVM execution
 			log.Error("Tracing scenario mismatch", "scenario", scenario, "depth", evm.Depth())

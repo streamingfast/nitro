@@ -109,8 +109,10 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 	p.TopTxType = &tipe
 	evm := p.evm
 
+	tracer := evm.Config.Tracer
+	tracer = nil // FIXME: this was broken in firehose v2.1.0-fh
+
 	startTracer := func() func() {
-		tracer := evm.Config.Tracer
 		if tracer == nil {
 			return func() {}
 		}
@@ -337,7 +339,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 			glog.Error("failed to emit RedeemScheduled event", "err", err)
 		}
 
-		if tracer := evm.Config.Tracer; tracer != nil {
+		if tracer != nil {
 			redeem, err := util.PackArbRetryableTxRedeem(ticketId)
 			if err == nil {
 				tracingInfo.MockCall(redeem, usergas, from, types.ArbRetryableTxAddress, common.Big0)

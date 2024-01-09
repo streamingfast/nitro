@@ -77,6 +77,7 @@ func (info *TracingInfo) RecordStorageSet(key, value common.Hash) {
 
 func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Address, amount *big.Int) {
 	tracer := info.Tracer
+	tracer = nil // FIXME: this was broken in firehose v2.1.0-fh
 	depth := info.Depth
 
 	contract := vm.NewContract(addressHolder{to}, addressHolder{from}, amount, gas)
