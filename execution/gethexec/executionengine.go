@@ -471,15 +471,11 @@ func (s *ExecutionEngine) createBlockFromNextMessage(msg *arbostypes.MessageWith
 		statedb,
 		s.bc,
 		s.bc.Config(),
-		//<<<<<<< HEAD
-		//  s.streamer.FetchBatch,
-		//  s.logger,
-		//=======
 		func(batchNum uint64) ([]byte, error) {
 			data, _, err := s.streamer.FetchBatch(batchNum)
 			return data, err
 		},
-		//>>>>>>> v2.3.0
+		s.logger,
 	)
 
 	return block, statedb, receipts, err
