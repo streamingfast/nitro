@@ -409,7 +409,7 @@ func (s *ExecutionEngine) sequenceDelayedMessageWithBlockMutex(message *arbostyp
 	}
 
 	startTime := time.Now()
-	block, statedb, receipts, err := s.createBlockFromNextMessage(&messageWithMeta)
+	block, statedb, receipts, err := s.createBlockFromNextMessage(&messageWithMeta, s.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +441,7 @@ func (s *ExecutionEngine) MessageIndexToBlockNumber(messageNum arbutil.MessageIn
 }
 
 // must hold createBlockMutex
-func (s *ExecutionEngine) createBlockFromNextMessage(msg *arbostypes.MessageWithMetadata) (*types.Block, *state.StateDB, types.Receipts, error) {
+func (s *ExecutionEngine) createBlockFromNextMessage(msg *arbostypes.MessageWithMetadata, logger core.BlockchainLogger) (*types.Block, *state.StateDB, types.Receipts, error) {
 	currentHeader := s.bc.CurrentBlock()
 	if currentHeader == nil {
 		return nil, nil, nil, errors.New("failed to get current block header")
@@ -475,7 +475,7 @@ func (s *ExecutionEngine) createBlockFromNextMessage(msg *arbostypes.MessageWith
 			data, _, err := s.streamer.FetchBatch(batchNum)
 			return data, err
 		},
-		s.logger,
+		logger,
 	)
 
 	return block, statedb, receipts, err
@@ -544,14 +544,14 @@ func (s *ExecutionEngine) digestMessageWithBlockMutex(num arbutil.MessageIndex, 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _, _, err := s.createBlockFromNextMessage(msgForPrefetch)
+			_, _, _, err := s.createBlockFromNextMessage(msgForPrefetch, nil)
 			if err != nil {
 				return
 			}
 		}()
 	}
 
-	block, statedb, receipts, err := s.createBlockFromNextMessage(msg)
+	block, statedb, receipts, err := s.createBlockFromNextMessage(msg, s.logger)
 	if err != nil {
 		return err
 	}
