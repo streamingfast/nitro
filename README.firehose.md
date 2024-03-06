@@ -23,7 +23,8 @@ export PATH="/opt/homebrew/opt/go@1.20/bin:$PATH"
 Then use their makefile since it performs a bunch of code generation:
 
 ```bash
-make
+# We use `make build` since it seems `make` alone fails on my system at least
+make build
 ```
 
 ## Docker Build
