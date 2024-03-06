@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/offchainlabs/nitro/util/arbmath"
 )
@@ -38,8 +39,14 @@ func TransferBalance(
 	if to != nil {
 		evm.StateDB.AddBalance(*to, amount, state.BalanceChangeTransfer)
 	}
+
 	tracer := evm.Config.Tracer
-	tracer = nil // FIXME: this was broken in firehose v2.1.0-fh
+	if _, ok := evm.Config.Tracer.(*tracers.Firehose); ok {
+		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
+		// of tracer call below don't respect the `Firehose` tracer's expectations.
+		tracer = nil
+	}
+
 	if tracer != nil {
 		if evm.Depth() != 0 && scenario != TracingDuringEVM {
 			// A non-zero depth implies this transfer is occurring inside EVM execution

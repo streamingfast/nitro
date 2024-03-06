@@ -15,6 +15,7 @@ import (
 	"github.com/offchainlabs/nitro/util/arbmath"
 
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/offchainlabs/nitro/arbos/retryables"
@@ -110,7 +111,11 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 	evm := p.evm
 
 	tracer := evm.Config.Tracer
-	tracer = nil // FIXME: this was broken in firehose v2.1.0-fh
+	if _, ok := evm.Config.Tracer.(*tracers.Firehose); ok {
+		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
+		// of tracer call below don't respect the `Firehose` tracer's expectations.
+		tracer = nil
+	}
 
 	startTracer := func() func() {
 		if tracer == nil {
