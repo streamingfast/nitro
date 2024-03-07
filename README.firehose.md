@@ -32,6 +32,6 @@ make build
 GitHub Actions have a hard time building Arbitrum Nitro, manually build of images can be performed with:
 
 ```bash
-TAG=v2.3.0-fh1
+TAG=v2.3.1-fh3.0
 docker build --platform linux/amd64 --label org.opencontainers.image.version=nitro-$TAG -t ghcr.io/streamingfast/nitro:latest -t ghcr.io/streamingfast/nitro:$TAG --push .
 ```
