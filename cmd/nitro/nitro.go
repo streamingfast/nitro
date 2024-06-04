@@ -29,8 +29,10 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/arbitrum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	_ "github.com/ethereum/go-ethereum/eth/tracers/js"
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -475,8 +477,12 @@ func mainImpl() int {
 			}
 		}
 	}
+	var tracer core.BlockchainLogger
+	if nodeConfig.Node.Firehose {
+		tracer = tracers.NewFirehoseLogger()
+	}
 
-	chainDb, l2BlockChain, err := openInitializeChainDb(ctx, stack, nodeConfig, new(big.Int).SetUint64(nodeConfig.Chain.ID), gethexec.DefaultCacheConfigFor(stack, &nodeConfig.Execution.Caching), l1Client, rollupAddrs)
+	chainDb, l2BlockChain, err := openInitializeChainDb(ctx, stack, nodeConfig, new(big.Int).SetUint64(nodeConfig.Chain.ID), gethexec.DefaultCacheConfigFor(stack, &nodeConfig.Execution.Caching), l1Client, rollupAddrs, tracer)
 	if l2BlockChain != nil {
 		deferFuncs = append(deferFuncs, func() { l2BlockChain.Stop() })
 	}
@@ -536,7 +542,7 @@ func mainImpl() int {
 		l2BlockChain,
 		l1Client,
 		func() *gethexec.Config { return &liveNodeConfig.Get().Execution },
-		nodeConfig.Node.Firehose,
+		tracer,
 	)
 	if err != nil {
 		log.Error("failed to create execution node", "err", err)
