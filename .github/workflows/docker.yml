@@ -112,4 +112,3 @@ jobs:
           for key in "${keys[@]}"; do
             curl -X DELETE -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/caches/$key"
           done
->>>>>>> v3.1.0
