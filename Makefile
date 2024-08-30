@@ -157,7 +157,7 @@ all: build build-replay-env test-gen-proofs
 	@touch .make/all
 
 .PHONY: build
-build: $(patsubst %,$(output_root)/bin/%, nitro relay daserver datool seq-coordinator-invalidate nitro-val seq-coordinator-manager)
+build: $(patsubst %,$(output_root)/bin/%, nitro relay daserver datool seq-coordinator-invalidate nitro-val seq-coordinator-manager dbconv)
 # build: $(patsubst %,$(output_root)/bin/%, nitro deploy relay daserver datool seq-coordinator-invalidate nitro-val seq-coordinator-manager dbconv)
 	@printf $(done)
 
