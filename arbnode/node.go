@@ -663,7 +663,7 @@ func createNodeImpl(
 			confirmedNotifiers = append(confirmedNotifiers, messagePruner)
 		}
 
-		stakerObj, err = staker.NewStaker(l1Reader, wallet, bind.CallOpts{}, config.Staker, blockValidator, statelessBlockValidator, nil, confirmedNotifiers, deployInfo.ValidatorUtils, fatalErrChan)
+		stakerObj, err = staker.NewStaker(l1Reader, wallet, bind.CallOpts{}, func() *staker.L1ValidatorConfig { return &configFetcher.Get().Staker }, blockValidator, statelessBlockValidator, nil, confirmedNotifiers, deployInfo.ValidatorUtils, fatalErrChan)
 		if err != nil {
 			return nil, err
 		}
@@ -702,6 +702,7 @@ func createNodeImpl(
 			TransactOpts:  txOptsBatchPoster,
 			DAPWriter:     dapWriter,
 			ParentChainID: parentChainID,
+			DAPReaders:    dapReaders,
 		})
 		if err != nil {
 			return nil, err
@@ -782,7 +783,7 @@ func CreateNode(
 	}
 	if currentNode.StatelessBlockValidator != nil {
 		apis = append(apis, rpc.API{
-			Namespace: "arbvalidator",
+			Namespace: "arbdebug",
 			Version:   "1.0",
 			Service: &BlockValidatorDebugAPI{
 				val: currentNode.StatelessBlockValidator,
@@ -991,10 +992,6 @@ func (n *Node) StopAndWait() {
 	if err := n.Stack.Close(); err != nil {
 		log.Error("error on stack close", "err", err)
 	}
-}
-
-func (n *Node) FetchBatch(ctx context.Context, batchNum uint64) ([]byte, common.Hash, error) {
-	return n.InboxReader.GetSequencerMessageBytes(ctx, batchNum)
 }
 
 func (n *Node) FindInboxBatchContainingMessage(message arbutil.MessageIndex) (uint64, bool, error) {
