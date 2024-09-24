@@ -1,0 +1,4 @@
+fireeth start reader-node --config-file= --log-format=stackdriver --log-to-file=false --data-dir=/Users/stepd/data \
+    --common-one-block-store-url=/Users/stepd/blocks/nova/new --common-first-streamable-block=0 --reader-node-data-dir=/Users/stepd/data --reader-node-working-dir=/Users/stepd/data/work \
+    --reader-node-grpc-listen-addr=:9000 --reader-node-manager-api-addr=:8080 --reader-node-path=./target/bin/nitro \
+    --reader-node-arguments="--parent-chain.blob-client.beacon-url=http://localhost:5052 --parent-chain.connection.url=http://localhost:8545 --chain.name=nova --http.api=net,web3,eth,debug --http.corsdomain=* --http.addr=0.0.0.0 --http.vhosts=* --persistent.global-config=/Users/stepd/data --metrics --metrics-server.addr=0.0.0.0 --metrics-server.port=6061 --http.port=8546 --ipc.path=./node.ipc --node.firehose --validation.wasm.allowed-wasm-module-roots=/Users/stepd/arbmachines/nitro-legacy/machines,/Users/stepd/arbmachines/target/machines"
