@@ -10,12 +10,6 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/offchainlabs/nitro/arbos/arbosState"
-	"github.com/offchainlabs/nitro/arbos/arbostypes"
-	"github.com/offchainlabs/nitro/arbos/l2pricing"
-	"github.com/offchainlabs/nitro/arbos/util"
-	"github.com/offchainlabs/nitro/util/arbmath"
-
 	"github.com/ethereum/go-ethereum/arbitrum_types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -25,6 +19,12 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+
+	"github.com/offchainlabs/nitro/arbos/arbosState"
+	"github.com/offchainlabs/nitro/arbos/arbostypes"
+	"github.com/offchainlabs/nitro/arbos/l2pricing"
+	"github.com/offchainlabs/nitro/arbos/util"
+	"github.com/offchainlabs/nitro/util/arbmath"
 )
 
 // set by the precompile module, to avoid a package dependence cycle
@@ -144,7 +144,8 @@ func ProduceBlock(
 	chainContext core.ChainContext,
 	chainConfig *params.ChainConfig,
 	isMsgForPrefetch bool,
-	logger core.BlockchainLogger,
+	runMode core.MessageRunMode,
+	tracer *tracing.Hooks,
 ) (*types.Block, types.Receipts, error) {
 	txes, err := ParseL2Transactions(message, chainConfig.ChainID)
 	if err != nil {
@@ -154,7 +155,7 @@ func ProduceBlock(
 
 	hooks := NoopSequencingHooks()
 	return ProduceBlockAdvanced(
-		message.Header, txes, delayedMessagesRead, lastBlockHeader, statedb, chainContext, chainConfig, hooks, isMsgForPrefetch, logger,
+		message.Header, txes, delayedMessagesRead, lastBlockHeader, statedb, chainContext, chainConfig, hooks, isMsgForPrefetch, runMode, tracer
 	)
 }
 
@@ -169,7 +170,8 @@ func ProduceBlockAdvanced(
 	chainConfig *params.ChainConfig,
 	sequencingHooks *SequencingHooks,
 	isMsgForPrefetch bool,
-	logger core.BlockchainLogger,
+	runMode core.MessageRunMode,
+	tracer *tracing.Hooks,
 ) (*types.Block, types.Receipts, error) {
 
 	state, err := arbosState.OpenSystemArbosState(statedb, nil, true)
@@ -177,7 +179,7 @@ func ProduceBlockAdvanced(
 		return nil, nil, err
 	}
 
-	statedb.SetLogger(logger)
+	statedb.SetLogger(tracer)
 	if statedb.GetUnexpectedBalanceDelta().BitLen() != 0 {
 		return nil, nil, errors.New("ProduceBlock called with dirty StateDB (non-zero unexpected balance delta)")
 	}
@@ -212,10 +214,10 @@ func ProduceBlockAdvanced(
 	// We'll check that the block can fit each message, so this pool is set to not run out
 	gethGas := core.GasPool(l2pricing.GethBlockGasLimit)
 
-	if logger != nil {
+	if tracer != nil {
 		lastFinalBlock := chainContext.(*core.BlockChain).CurrentFinalBlock()
-		logger.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(1), lastFinalBlock, lastFinalBlock, nil)
-		defer logger.OnBlockEnd(nil)
+		tracer.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(1), lastFinalBlock, lastFinalBlock, nil)
+		defer tracer.OnBlockEnd(nil)
 	}
 
 	for len(txes) > 0 || len(redeems) > 0 {
@@ -326,7 +328,8 @@ func ProduceBlockAdvanced(
 				header,
 				tx,
 				&header.GasUsed,
-				vm.Config{Tracer: logger},
+				vm.Config{Tracer: tracer},
+				runMode,
 				func(result *core.ExecutionResult) error {
 					return hooks.PostTxFilter(header, state, tx, sender, dataGas, result)
 				},
@@ -345,18 +348,6 @@ func ProduceBlockAdvanced(
 
 			return receipt, result, nil
 		})()
-
-		if tx.Type() == types.ArbitrumInternalTxType {
-			// ArbOS might have upgraded to a new version, so we need to refresh our state
-			state, err = arbosState.OpenSystemArbosState(statedb, nil, true)
-			if err != nil {
-				return nil, nil, err
-			}
-			// Update the ArbOS version in the header (if it changed)
-			extraInfo := types.DeserializeHeaderExtraInformation(header)
-			extraInfo.ArbOSFormatVersion = state.ArbOSVersion()
-			extraInfo.UpdateHeaderWithInfo(header)
-		}
 
 		// append the err, even if it is nil
 		hooks.TxErrors = append(hooks.TxErrors, err)
@@ -377,6 +368,18 @@ func ProduceBlockAdvanced(
 				}
 			}
 			continue
+		}
+
+		if tx.Type() == types.ArbitrumInternalTxType {
+			// ArbOS might have upgraded to a new version, so we need to refresh our state
+			state, err = arbosState.OpenSystemArbosState(statedb, nil, true)
+			if err != nil {
+				return nil, nil, err
+			}
+			// Update the ArbOS version in the header (if it changed)
+			extraInfo := types.DeserializeHeaderExtraInformation(header)
+			extraInfo.ArbOSFormatVersion = state.ArbOSVersion()
+			extraInfo.UpdateHeaderWithInfo(header)
 		}
 
 		if tx.Type() == types.ArbitrumInternalTxType && result.Err != nil {
@@ -466,11 +469,11 @@ func ProduceBlockAdvanced(
 	FinalizeBlock(header, complete, statedb, chainConfig)
 
 	// Touch up the block hashes in receipts
-	tmpBlock := types.NewBlock(header, complete, nil, receipts, trie.NewStackTrie(nil))
+	tmpBlock := types.NewBlock(header, &types.Body{Transactions: complete}, receipts, trie.NewStackTrie(nil))
 	blockHash := tmpBlock.Hash()
 
-	if logger != nil {
-		logger.OnBlockUpdate(tmpBlock, big.NewInt(1))
+	if tracer != nil {
+		tracer.OnBlockUpdate(tmpBlock, big.NewInt(1))
 	}
 	for _, receipt := range receipts {
 		receipt.BlockHash = blockHash
@@ -479,7 +482,7 @@ func ProduceBlockAdvanced(
 		}
 	}
 
-	block := types.NewBlock(header, complete, nil, receipts, trie.NewStackTrie(nil))
+	block := types.NewBlock(header, &types.Body{Transactions: complete}, receipts, trie.NewStackTrie(nil))
 
 	if len(block.Transactions()) != len(receipts) {
 		return nil, nil, fmt.Errorf("block has %d txes but %d receipts", len(block.Transactions()), len(receipts))

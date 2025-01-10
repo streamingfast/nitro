@@ -13,16 +13,16 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers/directory"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/offchainlabs/nitro/util/containers"
 )
 
 func init() {
-	directory.DefaultDirectory.Register("stylusTracer", newStylusTracer, false)
+	tracers.DefaultDirectory.Register("stylusTracer", newStylusTracer, false)
 }
 
 // stylusTracer captures Stylus HostIOs and returns them in a structured format to be used in Cargo
@@ -69,10 +69,20 @@ var nestsHostios = map[string]bool{
 	"static_call_contract":   true,
 }
 
-func newStylusTracer(ctx *directory.Context, _ json.RawMessage) (directory.Tracer, error) {
-	return &stylusTracer{
+func newStylusTracer(ctx *tracers.Context, _ json.RawMessage) (*tracers.Tracer, error) {
+	t := &stylusTracer{
 		open:  containers.NewStack[HostioTraceInfo](),
 		stack: containers.NewStack[*containers.Stack[HostioTraceInfo]](),
+	}
+
+	return &tracers.Tracer{
+		Hooks: &tracing.Hooks{
+			OnEnter:             t.OnEnter,
+			OnExit:              t.OnExit,
+			CaptureStylusHostio: t.CaptureStylusHostio,
+		},
+		GetResult: t.GetResult,
+		Stop:      t.Stop,
 	}, nil
 }
 
@@ -106,16 +116,18 @@ func (t *stylusTracer) CaptureStylusHostio(name string, args, outs []byte, start
 	}
 	t.open.Push(info)
 }
-
-func (t *stylusTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+func (t *stylusTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 	if t.interrupt.Load() {
+		return
+	}
+	if depth == 0 {
 		return
 	}
 
 	// This function adds the prefix evm_ because it assumes the opcode came from the EVM.
 	// If the opcode comes from WASM, the CaptureStylusHostio function will remove the evm prefix.
 	var name string
-	switch typ {
+	switch vm.OpCode(typ) {
 	case vm.CALL:
 		name = "evm_call_contract"
 	case vm.DELEGATECALL:
@@ -141,8 +153,11 @@ func (t *stylusTracer) CaptureEnter(typ vm.OpCode, from common.Address, to commo
 	t.open = inner
 }
 
-func (t *stylusTracer) CaptureExit(output []byte, gasUsed uint64, _ error) {
+func (t *stylusTracer) OnExit(depth int, output []byte, gasUsed uint64, _ error, reverted bool) {
 	if t.interrupt.Load() {
+		return
+	}
+	if depth == 0 {
 		return
 	}
 	var err error
@@ -183,40 +198,3 @@ func (t *stylusTracer) Stop(err error) {
 	t.reason = err
 	t.interrupt.Store(true)
 }
-
-// Unimplemented EVMLogger interface methods
-
-func (t *stylusTracer) CaptureArbitrumTransfer(env *vm.EVM, from, to *common.Address, value *big.Int, before bool, purpose string) {
-}
-func (t *stylusTracer) CaptureArbitrumStorageGet(key common.Hash, depth int, before bool)        {}
-func (t *stylusTracer) CaptureArbitrumStorageSet(key, value common.Hash, depth int, before bool) {}
-
-func (t *stylusTracer) CaptureStart(from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
-}
-func (t *stylusTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {}
-func (t *stylusTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
-}
-func (t *stylusTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _ *vm.ScopeContext, depth int, err error) {
-}
-
-func (t *stylusTracer) CaptureTxEnd(receipt *types.Receipt, err error)                         {}
-func (t *stylusTracer) CaptureTxStart(evm *vm.EVM, tx *types.Transaction, from common.Address) {}
-
-// CaptureKeccakPreimage is called during the KECCAK256 opcode.
-func (t *stylusTracer) CaptureKeccakPreimage(hash common.Hash, data []byte) {}
-
-func (t *stylusTracer) OnBalanceChange(a common.Address, prev, new *big.Int, reason state.BalanceChangeReason) {
-}
-
-func (t *stylusTracer) OnCodeChange(a common.Address, prevCodeHash common.Hash, prev []byte, codeHash common.Hash, code []byte) {
-}
-
-func (t *stylusTracer) OnGasChange(old, new uint64, reason vm.GasChangeReason) {}
-
-func (t *stylusTracer) OnLog(l *types.Log) {}
-
-func (t *stylusTracer) OnNewAccount(a common.Address) {}
-
-func (t *stylusTracer) OnNonceChange(a common.Address, prev, new uint64) {}
-
-func (t *stylusTracer) OnStorageChange(a common.Address, k, prev, new common.Hash) {}
