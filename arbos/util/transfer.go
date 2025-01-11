@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/offchainlabs/nitro/util/arbmath"
@@ -33,8 +32,9 @@ func TransferBalance(
 		panic(fmt.Sprintf("Tried to transfer negative amount %v from %v to %v", amount, from, to))
 	}
 
+	// Only Firehose tracer has OnBlockUpdate defined, we can use
 	tracer := evm.Config.Tracer
-	if _, ok := evm.Config.Tracer.(*tracers.Firehose); ok {
+	if evm.Config.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
 		tracer = nil

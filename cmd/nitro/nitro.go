@@ -30,8 +30,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/arbitrum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers"
@@ -444,7 +444,7 @@ func mainImpl() int {
 	}
 	var tracer *tracing.Hooks
 	if nodeConfig.Node.Firehose {
-		tracer = tracers.NewFirehoseLogger()
+		tracer = tracers.NewTracingHooksFromFirehose(tracers.NewFirehose(&tracers.FirehoseConfig{}))
 	}
 
 	chainDb, l2BlockChain, err := openInitializeChainDb(ctx, stack, nodeConfig, new(big.Int).SetUint64(nodeConfig.Chain.ID), gethexec.DefaultCacheConfigFor(stack, &nodeConfig.Execution.Caching), &nodeConfig.Execution.StylusTarget, &nodeConfig.Persistent, l1Client, rollupAddrs, tracer)

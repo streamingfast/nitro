@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -88,7 +87,9 @@ func (info *TracingInfo) RecordStorageSet(key, value common.Hash) {
 
 func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Address, amount *big.Int) {
 	tracer := info.Tracer
-	if _, ok := info.Tracer.(*tracers.Firehose); ok {
+
+	// Only Firehose tracer has OnBlockUpdate defined, we can use
+	if info.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
 		tracer = nil

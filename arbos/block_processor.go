@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
@@ -155,7 +156,7 @@ func ProduceBlock(
 
 	hooks := NoopSequencingHooks()
 	return ProduceBlockAdvanced(
-		message.Header, txes, delayedMessagesRead, lastBlockHeader, statedb, chainContext, chainConfig, hooks, isMsgForPrefetch, runMode, tracer
+		message.Header, txes, delayedMessagesRead, lastBlockHeader, statedb, chainContext, chainConfig, hooks, isMsgForPrefetch, runMode, tracer,
 	)
 }
 
@@ -216,7 +217,12 @@ func ProduceBlockAdvanced(
 
 	if tracer != nil {
 		lastFinalBlock := chainContext.(*core.BlockChain).CurrentFinalBlock()
-		tracer.OnBlockStart(types.NewBlock(header, nil, nil, nil, nil), big.NewInt(1), lastFinalBlock, lastFinalBlock, nil)
+		tracer.OnBlockStart(tracing.BlockEvent{
+			Block:     types.NewBlock(header, nil, nil, nil),
+			TD:        big.NewInt(1),
+			Finalized: lastFinalBlock,
+			Safe:      lastFinalBlock,
+		})
 		defer tracer.OnBlockEnd(nil)
 	}
 

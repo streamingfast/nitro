@@ -144,8 +144,9 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 	p.TopTxType = &tipe
 	evm := p.evm
 
+	// Only Firehose tracer has OnBlockUpdate defined, we can use
 	tracer := evm.Config.Tracer
-	if _, ok := evm.Config.Tracer.(*tracers.Firehose); ok {
+	if evm.Config.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
 		tracer = nil
