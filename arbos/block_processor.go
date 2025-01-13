@@ -478,7 +478,7 @@ func ProduceBlockAdvanced(
 	tmpBlock := types.NewBlock(header, &types.Body{Transactions: complete}, receipts, trie.NewStackTrie(nil))
 	blockHash := tmpBlock.Hash()
 
-	if tracer != nil {
+	if tracer != nil && tracer.OnBlockUpdate != nil {
 		tracer.OnBlockUpdate(tmpBlock, big.NewInt(1))
 	}
 	for _, receipt := range receipts {

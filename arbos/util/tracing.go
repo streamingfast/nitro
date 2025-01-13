@@ -89,7 +89,7 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 	tracer := info.Tracer
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
-	if info.Tracer.OnBlockUpdate != nil {
+	if tracer != nil && tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
 		tracer = nil

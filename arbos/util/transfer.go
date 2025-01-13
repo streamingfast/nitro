@@ -34,7 +34,7 @@ func TransferBalance(
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
 	tracer := evm.Config.Tracer
-	if evm.Config.Tracer.OnBlockUpdate != nil {
+	if tracer != nil && tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
 		tracer = nil
