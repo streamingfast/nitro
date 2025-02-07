@@ -258,6 +258,7 @@ type NodeBuilder struct {
 	l3InitMessage               *arbostypes.ParsedInitMessage
 	withProdConfirmPeriodBlocks bool
 	wasmCacheTag                uint32
+	delayBufferThreshold        uint64
 
 	// Created nodes
 	L1 *TestClient
@@ -375,6 +376,14 @@ func (b *NodeBuilder) WithStylusLongTermCache(enabled bool) *NodeBuilder {
 	return b
 }
 
+// WithDelayBuffer sets the delay-buffer threshold, which is the number of blocks the batch-poster
+// is allowed to delay a batch with a delayed message.
+// Setting the threshold to zero disabled the delay buffer (default behaviour).
+func (b *NodeBuilder) WithDelayBuffer(threshold uint64) *NodeBuilder {
+	b.delayBufferThreshold = threshold
+	return b
+}
+
 func (b *NodeBuilder) Build(t *testing.T) func() {
 	b.CheckConfig(t)
 	if b.withL1 {
@@ -425,6 +434,7 @@ func (b *NodeBuilder) BuildL1(t *testing.T) {
 		b.withProdConfirmPeriodBlocks,
 		true,
 		b.deployBold,
+		b.delayBufferThreshold,
 	)
 	b.L1.cleanup = func() { requireClose(t, b.L1.Stack) }
 }
@@ -488,7 +498,7 @@ func buildOnParentChain(
 	Require(t, execConfig.Validate())
 	execConfigToBeUsedInConfigFetcher := execConfig
 	execConfigFetcher := func() *gethexec.Config { return execConfigToBeUsedInConfigFetcher }
-	execNode, err := gethexec.CreateExecutionNode(ctx, chainTestClient.Stack, chainDb, blockchain, parentChainTestClient.Client, execConfigFetcher)
+	execNode, err := gethexec.CreateExecutionNode(ctx, chainTestClient.Stack, chainDb, blockchain, parentChainTestClient.Client, execConfigFetcher, nil)
 	Require(t, err)
 
 	fatalErrChan := make(chan error, 10)
@@ -529,6 +539,7 @@ func (b *NodeBuilder) BuildL3OnL2(t *testing.T) func() {
 		b.l3Config.withProdConfirmPeriodBlocks,
 		false,
 		b.deployBold,
+		0,
 	)
 
 	b.L3 = buildOnParentChain(
@@ -609,7 +620,7 @@ func (b *NodeBuilder) BuildL2(t *testing.T) func() {
 	Require(t, b.execConfig.Validate())
 	execConfig := b.execConfig
 	execConfigFetcher := func() *gethexec.Config { return execConfig }
-	execNode, err := gethexec.CreateExecutionNode(b.ctx, b.L2.Stack, chainDb, blockchain, nil, execConfigFetcher)
+	execNode, err := gethexec.CreateExecutionNode(b.ctx, b.L2.Stack, chainDb, blockchain, nil, execConfigFetcher, nil)
 	Require(t, err)
 
 	fatalErrChan := make(chan error, 10)
@@ -658,7 +669,7 @@ func (b *NodeBuilder) RestartL2Node(t *testing.T) {
 	l2info, stack, chainDb, arbDb, blockchain := createNonL1BlockChainWithStackConfig(t, b.L2Info, b.dataDir, b.chainConfig, b.initMessage, b.l2StackConfig, b.execConfig, b.wasmCacheTag)
 
 	execConfigFetcher := func() *gethexec.Config { return b.execConfig }
-	execNode, err := gethexec.CreateExecutionNode(b.ctx, stack, chainDb, blockchain, nil, execConfigFetcher)
+	execNode, err := gethexec.CreateExecutionNode(b.ctx, stack, chainDb, blockchain, nil, execConfigFetcher, nil)
 	Require(t, err)
 
 	feedErrChan := make(chan error, 10)
@@ -886,6 +897,21 @@ func BridgeBalance(
 	return tx, res
 }
 
+// AdvanceL1 sends dummy transactions to L1 to create blocks.
+func AdvanceL1(
+	t *testing.T,
+	ctx context.Context,
+	l1client *ethclient.Client,
+	l1info *BlockchainTestInfo,
+	numBlocks int,
+) {
+	for i := 0; i < numBlocks; i++ {
+		SendWaitTestTransactions(t, ctx, l1client, []*types.Transaction{
+			l1info.PrepareTx("Faucet", "Faucet", 30000, big.NewInt(1e12), nil),
+		})
+	}
+}
+
 func SendSignedTxesInBatchViaL1(
 	t *testing.T,
 	ctx context.Context,
@@ -905,12 +931,7 @@ func SendSignedTxesInBatchViaL1(
 	_, err = EnsureTxSucceeded(ctx, l1client, l1tx)
 	Require(t, err)
 
-	// sending l1 messages creates l1 blocks.. make enough to get that delayed inbox message in
-	for i := 0; i < 30; i++ {
-		SendWaitTestTransactions(t, ctx, l1client, []*types.Transaction{
-			l1info.PrepareTx("Faucet", "Faucet", 30000, big.NewInt(1e12), nil),
-		})
-	}
+	AdvanceL1(t, ctx, l1client, l1info, 30)
 	var receipts types.Receipts
 	for _, tx := range delayedTxes {
 		receipt, err := EnsureTxSucceeded(ctx, l2client, tx)
@@ -957,12 +978,7 @@ func SendSignedTxViaL1(
 	_, err = EnsureTxSucceeded(ctx, l1client, l1tx)
 	Require(t, err)
 
-	// sending l1 messages creates l1 blocks.. make enough to get that delayed inbox message in
-	for i := 0; i < 30; i++ {
-		SendWaitTestTransactions(t, ctx, l1client, []*types.Transaction{
-			l1info.PrepareTx("Faucet", "Faucet", 30000, big.NewInt(1e12), nil),
-		})
-	}
+	AdvanceL1(t, ctx, l1client, l1info, 30)
 	receipt, err := EnsureTxSucceeded(ctx, l2client, delayedTx)
 	Require(t, err)
 	return receipt
@@ -1008,12 +1024,7 @@ func SendUnsignedTxViaL1(
 	_, err = EnsureTxSucceeded(ctx, l1client, l1tx)
 	Require(t, err)
 
-	// sending l1 messages creates l1 blocks.. make enough to get that delayed inbox message in
-	for i := 0; i < 30; i++ {
-		SendWaitTestTransactions(t, ctx, l1client, []*types.Transaction{
-			l1info.PrepareTx("Faucet", "Faucet", 30000, big.NewInt(1e12), nil),
-		})
-	}
+	AdvanceL1(t, ctx, l1client, l1info, 30)
 	receipt, err := EnsureTxSucceeded(ctx, l2client, unsignedTx)
 	Require(t, err)
 	return receipt
@@ -1277,6 +1288,7 @@ func deployOnParentChain(
 	prodConfirmPeriodBlocks bool,
 	chainSupportsBlobs bool,
 	deployBold bool,
+	delayBufferThreshold uint64,
 ) (*chaininfo.RollupAddresses, *arbostypes.ParsedInitMessage) {
 	parentChainInfo.GenerateAccount("RollupOwner")
 	parentChainInfo.GenerateAccount("Sequencer")
@@ -1318,6 +1330,11 @@ func deployOnParentChain(
 			MachineStatus:  1, // Finished
 			EndHistoryRoot: [32]byte{},
 		}
+		bufferConfig := rollupgen.BufferConfig{
+			Threshold:            delayBufferThreshold, // number of blocks
+			Max:                  14400,                // 2 days of blocks
+			ReplenishRateInBasis: 500,                  // 5%
+		}
 		cfg := rollupgen.Config{
 			MiniStakeValues:     miniStakeValues,
 			ConfirmPeriodBlocks: 120,
@@ -1342,6 +1359,7 @@ func deployOnParentChain(
 			AnyTrustFastConfirmer:        common.Address{},
 			NumBigStepLevel:              3,
 			ChallengeGracePeriodBlocks:   3,
+			BufferConfig:                 bufferConfig,
 		}
 		wrappedClient := butil.NewBackendWrapper(parentChainReader.Client(), rpc.LatestBlockNumber)
 		boldAddresses, err := setup.DeployFullRollupStack(
@@ -1410,6 +1428,7 @@ func createNonL1BlockChainWithStackConfig(
 	if execConfig == nil {
 		execConfig = ExecConfigDefaultTest(t)
 	}
+	Require(t, execConfig.Validate())
 
 	stack, err := node.New(stackConfig)
 	Require(t, err)
@@ -1434,7 +1453,7 @@ func createNonL1BlockChainWithStackConfig(
 		}
 	}
 	coreCacheConfig := gethexec.DefaultCacheConfigFor(stack, &execConfig.Caching)
-	blockchain, err := gethexec.WriteOrTestBlockChain(chainDb, coreCacheConfig, initReader, chainConfig, initMessage, ExecConfigDefaultTest(t).TxLookupLimit, 0)
+	blockchain, err := gethexec.WriteOrTestBlockChain(chainDb, coreCacheConfig, initReader, chainConfig, initMessage, ExecConfigDefaultTest(t).TxLookupLimit, 0, nil)
 	Require(t, err)
 
 	return info, stack, chainDb, arbDb, blockchain
@@ -1497,6 +1516,8 @@ func Create2ndNodeWithConfig(
 	if execConfig == nil {
 		execConfig = ExecConfigDefaultNonSequencerTest(t)
 	}
+	Require(t, execConfig.Validate())
+
 	feedErrChan := make(chan error, 10)
 	parentChainRpcClient := parentChainStack.Attach()
 	parentChainClient := ethclient.NewClient(parentChainRpcClient)
@@ -1525,15 +1546,14 @@ func Create2ndNodeWithConfig(
 	chainConfig := firstExec.ArbInterface.BlockChain().Config()
 
 	coreCacheConfig := gethexec.DefaultCacheConfigFor(chainStack, &execConfig.Caching)
-	blockchain, err := gethexec.WriteOrTestBlockChain(chainDb, coreCacheConfig, initReader, chainConfig, initMessage, ExecConfigDefaultTest(t).TxLookupLimit, 0)
+	blockchain, err := gethexec.WriteOrTestBlockChain(chainDb, coreCacheConfig, initReader, chainConfig, initMessage, ExecConfigDefaultTest(t).TxLookupLimit, 0, nil)
 	Require(t, err)
 
 	AddValNodeIfNeeded(t, ctx, nodeConfig, true, "", valnodeConfig.Wasm.RootPath)
 
-	Require(t, execConfig.Validate())
 	Require(t, nodeConfig.Validate())
 	configFetcher := func() *gethexec.Config { return execConfig }
-	currentExec, err := gethexec.CreateExecutionNode(ctx, chainStack, chainDb, blockchain, parentChainClient, configFetcher)
+	currentExec, err := gethexec.CreateExecutionNode(ctx, chainStack, chainDb, blockchain, parentChainClient, configFetcher, nil)
 	Require(t, err)
 
 	currentNode, err := arbnode.CreateNode(ctx, chainStack, currentExec, arbDb, NewFetcherFromConfig(nodeConfig), blockchain.Config(), parentChainClient, addresses, &validatorTxOpts, &sequencerTxOpts, dataSigner, feedErrChan, big.NewInt(1337), nil)
