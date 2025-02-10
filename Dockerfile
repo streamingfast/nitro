@@ -42,10 +42,10 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y curl build-essential=12.9
 
 FROM wasm-base AS wasm-libs-builder
-	# clang / lld used by soft-float wasm
+# clang / lld used by soft-float wasm
 RUN apt-get update && \
     apt-get install -y clang=1:14.0-55.7~deb12u1 lld=1:14.0-55.7~deb12u1 wabt
-    # pinned rust 1.80.1
+# pinned rust 1.80.1
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.80.1 --target x86_64-unknown-linux-gnu wasm32-unknown-unknown wasm32-wasi
 COPY ./Makefile ./
 COPY arbitrator/Cargo.* arbitrator/
@@ -333,7 +333,7 @@ USER root
 # Copy in latest WASM module root
 RUN rm -f /home/user/target/machines/latest
 COPY --from=prover-export /bin/jit                                         /usr/local/bin/
-#COPY --from=node-builder  /workspace/target/bin/deploy                     /usr/local/bin/
+COPY --from=node-builder  /workspace/target/bin/deploy                     /usr/local/bin/
 COPY --from=node-builder  /workspace/target/bin/seq-coordinator-invalidate /usr/local/bin/
 COPY --from=node-builder  /workspace/target/bin/mockexternalsigner        /usr/local/bin/
 COPY --from=module-root-calc /workspace/target/machines/latest/machine.wavm.br /home/user/target/machines/latest/
