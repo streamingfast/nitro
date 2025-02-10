@@ -302,6 +302,9 @@ docker:
 $(output_root)/bin/nitro: $(DEP_PREDICATE) build-node-deps
 	go build $(GOLANG_PARAMS) -o $@ "$(CURDIR)/cmd/nitro"
 
+$(output_root)/bin/deploy: $(DEP_PREDICATE) build-node-deps
+	go build $(GOLANG_PARAMS) -o $@ "$(CURDIR)/cmd/deploy"
+
 $(output_root)/bin/relay: $(DEP_PREDICATE) build-node-deps
 	go build $(GOLANG_PARAMS) -o $@ "$(CURDIR)/cmd/relay"
 
