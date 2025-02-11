@@ -193,7 +193,7 @@ func CreateExecutionNode(
 	tracer *tracing.Hooks,
 ) (*ExecutionNode, error) {
 	config := configFetcher()
-	execEngine, err := NewExecutionEngine(l2BlockChain, config.Sequencer.Dangerous.Timeboost.Enable)
+	execEngine, err := NewExecutionEngine(l2BlockChain)
 	if config.EnablePrefetchBlock {
 		execEngine.EnablePrefetchBlock()
 	}

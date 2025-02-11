@@ -101,8 +101,6 @@ type ExecutionEngine struct {
 	prefetchBlock bool
 
 	cachedL1PriceData *L1PriceData
-
-	isTimeboostEnabled bool
 }
 
 func NewL1PriceData() *L1PriceData {
@@ -111,13 +109,12 @@ func NewL1PriceData() *L1PriceData {
 	}
 }
 
-func NewExecutionEngine(bc *core.BlockChain, isTimeboostEnabled bool) (*ExecutionEngine, error) {
+func NewExecutionEngine(bc *core.BlockChain) (*ExecutionEngine, error) {
 	return &ExecutionEngine{
-		bc:                 bc,
-		resequenceChan:     make(chan []*arbostypes.MessageWithMetadata),
-		newBlockNotifier:   make(chan struct{}, 1),
-		cachedL1PriceData:  NewL1PriceData(),
-		isTimeboostEnabled: isTimeboostEnabled,
+		bc:                bc,
+		resequenceChan:    make(chan []*arbostypes.MessageWithMetadata),
+		newBlockNotifier:  make(chan struct{}, 1),
+		cachedL1PriceData: NewL1PriceData(),
 	}, nil
 }
 
@@ -628,9 +625,6 @@ func (s *ExecutionEngine) sequenceTransactionsWithBlockMutex(header *arbostypes.
 // blockMetadata[index / 8 + 1] & (1 << (index % 8)) != 0; where index = (N - 1), implies whether (N)th tx in a block is timeboosted
 // note that number of txs in a block will always lag behind (len(blockMetadata) - 1) * 8 but it wont lag more than a value of 7
 func (s *ExecutionEngine) blockMetadataFromBlock(block *types.Block, timeboostedTxs map[common.Hash]struct{}) common.BlockMetadata {
-	if timeboostedTxs == nil {
-		return nil
-	}
 	bits := make(common.BlockMetadata, 1+arbmath.DivCeil(uint64(len(block.Transactions())), 8))
 	if len(timeboostedTxs) == 0 {
 		return bits
@@ -685,11 +679,7 @@ func (s *ExecutionEngine) sequenceDelayedMessageWithBlockMutex(message *arbostyp
 		return nil, err
 	}
 
-	var blockMetadata common.BlockMetadata
-	if s.isTimeboostEnabled {
-		blockMetadata = s.blockMetadataFromBlock(block, make(map[common.Hash]struct{}))
-	}
-	err = s.consensus.WriteMessageFromSequencer(pos, messageWithMeta, *msgResult, blockMetadata)
+	err = s.consensus.WriteMessageFromSequencer(pos, messageWithMeta, *msgResult, s.blockMetadataFromBlock(block, nil))
 	if err != nil {
 		return nil, err
 	}
