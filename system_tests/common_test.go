@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -337,6 +338,11 @@ func (b *NodeBuilder) DefaultConfig(t *testing.T, withL1 bool) *NodeBuilder {
 	b.valnodeConfig = &cp
 	b.execConfig = ExecConfigDefaultTest(t)
 	b.l3Config = L3NitroConfigDefaultTest(t)
+
+	if os.Getenv("FIREHOSE_ETHEREUM_TEST_TRACER") != "" {
+		b.nodeConfig.Firehose = true
+	}
+
 	return b
 }
 
@@ -498,7 +504,16 @@ func buildOnParentChain(
 	Require(t, execConfig.Validate())
 	execConfigToBeUsedInConfigFetcher := execConfig
 	execConfigFetcher := func() *gethexec.Config { return execConfigToBeUsedInConfigFetcher }
-	execNode, err := gethexec.CreateExecutionNode(ctx, chainTestClient.Stack, chainDb, blockchain, parentChainTestClient.Client, execConfigFetcher, nil)
+	var tracer *tracing.Hooks
+	if nodeConfig.Firehose {
+		firehoseTracer, err := tracers.NewFirehoseFromRawJSON(json.RawMessage(`{"_private": {"flushToTestBuffer": true}}`))
+		Require(t, err)
+
+		tracer = tracers.NewTracingHooksFromFirehose(firehoseTracer)
+		tracer.OnBlockchainInit(chainConfig)
+	}
+
+	execNode, err := gethexec.CreateExecutionNode(ctx, chainTestClient.Stack, chainDb, blockchain, parentChainTestClient.Client, execConfigFetcher, tracer)
 	Require(t, err)
 
 	fatalErrChan := make(chan error, 10)
@@ -620,7 +635,17 @@ func (b *NodeBuilder) BuildL2(t *testing.T) func() {
 	Require(t, b.execConfig.Validate())
 	execConfig := b.execConfig
 	execConfigFetcher := func() *gethexec.Config { return execConfig }
-	execNode, err := gethexec.CreateExecutionNode(b.ctx, b.L2.Stack, chainDb, blockchain, nil, execConfigFetcher, nil)
+
+	var tracer *tracing.Hooks
+	if b.nodeConfig.Firehose {
+		firehoseTracer, err := tracers.NewFirehoseFromRawJSON(json.RawMessage(`{"_private": {"flushToTestBuffer": true}}`))
+		Require(t, err)
+
+		tracer = tracers.NewTracingHooksFromFirehose(firehoseTracer)
+		tracer.OnBlockchainInit(b.chainConfig)
+	}
+
+	execNode, err := gethexec.CreateExecutionNode(b.ctx, b.L2.Stack, chainDb, blockchain, nil, execConfigFetcher, tracer)
 	Require(t, err)
 
 	fatalErrChan := make(chan error, 10)
