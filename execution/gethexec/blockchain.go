@@ -3,7 +3,6 @@ package gethexec
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -12,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -32,6 +30,7 @@ type CachingConfig struct {
 	BlockCount                          uint64        `koanf:"block-count"`
 	BlockAge                            time.Duration `koanf:"block-age"`
 	TrieTimeLimit                       time.Duration `koanf:"trie-time-limit"`
+	TrieTimeLimitRandomOffset           time.Duration `koanf:"trie-time-limit-random-offset"`
 	TrieDirtyCache                      int           `koanf:"trie-dirty-cache"`
 	TrieCleanCache                      int           `koanf:"trie-clean-cache"`
 	TrieCapLimit                        uint32        `koanf:"trie-cap-limit"`
@@ -51,6 +50,7 @@ func CachingConfigAddOptions(prefix string, f *flag.FlagSet) {
 	f.Uint64(prefix+".block-count", DefaultCachingConfig.BlockCount, "minimum number of recent blocks to keep in memory")
 	f.Duration(prefix+".block-age", DefaultCachingConfig.BlockAge, "minimum age of recent blocks to keep in memory")
 	f.Duration(prefix+".trie-time-limit", DefaultCachingConfig.TrieTimeLimit, "maximum block processing time before trie is written to hard-disk")
+	f.Duration(prefix+".trie-time-limit-random-offset", DefaultCachingConfig.TrieTimeLimitRandomOffset, "if greater then 0, the block processing time period of each trie write to hard-disk is shortened by a random value from range [0, trie-time-limit-random-offset)")
 	f.Int(prefix+".trie-dirty-cache", DefaultCachingConfig.TrieDirtyCache, "amount of memory in megabytes to cache state diffs against disk with (larger cache lowers database growth)")
 	f.Int(prefix+".trie-clean-cache", DefaultCachingConfig.TrieCleanCache, "amount of memory in megabytes to cache unchanged state trie nodes with")
 	f.Int(prefix+".snapshot-cache", DefaultCachingConfig.SnapshotCache, "amount of memory in megabytes to cache state snapshots with")
@@ -75,6 +75,7 @@ var DefaultCachingConfig = CachingConfig{
 	BlockCount:                         128,
 	BlockAge:                           30 * time.Minute,
 	TrieTimeLimit:                      time.Hour,
+	TrieTimeLimitRandomOffset:          0,
 	TrieDirtyCache:                     1024,
 	TrieCleanCache:                     600,
 	TrieCapLimit:                       100,
@@ -101,6 +102,7 @@ func DefaultCacheConfigFor(stack *node.Node, cachingConfig *CachingConfig) *core
 		TrieDirtyLimit:                     cachingConfig.TrieDirtyCache,
 		TrieDirtyDisabled:                  cachingConfig.Archive,
 		TrieTimeLimit:                      cachingConfig.TrieTimeLimit,
+		TrieTimeLimitRandomOffset:          cachingConfig.TrieTimeLimitRandomOffset,
 		TriesInMemory:                      cachingConfig.BlockCount,
 		TrieRetention:                      cachingConfig.BlockAge,
 		SnapshotLimit:                      cachingConfig.SnapshotCache,
@@ -133,7 +135,6 @@ func (c *CachingConfig) Validate() error {
 func WriteOrTestGenblock(chainDb ethdb.Database, cacheConfig *core.CacheConfig, initData statetransfer.InitDataReader, chainConfig *params.ChainConfig, initMessage *arbostypes.ParsedInitMessage, accountsPerSync uint) error {
 	EmptyHash := common.Hash{}
 	prevHash := EmptyHash
-	prevDifficulty := big.NewInt(0)
 	blockNumber, err := initData.GetNextBlockNumber()
 	if err != nil {
 		return err
@@ -161,8 +162,13 @@ func WriteOrTestGenblock(chainDb ethdb.Database, cacheConfig *core.CacheConfig, 
 
 	if storedGenHash == EmptyHash {
 		// chainDb did not have genesis block. Initialize it.
-		core.WriteHeadBlock(chainDb, genBlock, prevDifficulty)
+		batch := chainDb.NewBatch()
+		core.WriteHeadBlock(batch, genBlock)
 		rawdb.WriteGenesisStateSpec(chainDb, blockHash, []byte("{}")) // used so Firehose tracer can extract the genesis allocs
+		err = batch.Write()
+		if err != nil {
+			return err
+		}
 		log.Info("wrote genesis block", "number", blockNumber, "hash", blockHash)
 	} else if storedGenHash != blockHash {
 		return fmt.Errorf("database contains data inconsistent with initialization: database has genesis hash %v but we built genesis hash %v", storedGenHash, blockHash)
@@ -217,7 +223,7 @@ func GetBlockChain(chainDb ethdb.Database, cacheConfig *core.CacheConfig, chainC
 		Tracer:                  tracer,
 	}
 
-	return core.NewBlockChain(chainDb, cacheConfig, chainConfig, nil, nil, engine, vmConfig, shouldPreserveFalse, &txLookupLimit)
+	return core.NewBlockChain(chainDb, cacheConfig, chainConfig, nil, nil, engine, vmConfig, &txLookupLimit)
 }
 
 func WriteOrTestBlockChain(chainDb ethdb.Database, cacheConfig *core.CacheConfig, initData statetransfer.InitDataReader, chainConfig *params.ChainConfig, initMessage *arbostypes.ParsedInitMessage, txLookupLimit uint64, accountsPerSync uint, tracer *tracing.Hooks) (*core.BlockChain, error) {
@@ -238,11 +244,6 @@ func WriteOrTestBlockChain(chainDb ethdb.Database, cacheConfig *core.CacheConfig
 		return nil, err
 	}
 	return GetBlockChain(chainDb, cacheConfig, chainConfig, txLookupLimit, tracer)
-}
-
-// Don't preserve reorg'd out blocks
-func shouldPreserveFalse(_ *types.Header) bool {
-	return false
 }
 
 func init() {

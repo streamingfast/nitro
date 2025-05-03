@@ -1,5 +1,5 @@
 // Copyright 2021-2022, Offchain Labs, Inc.
-// For license information, see https://github.com/nitro/blob/master/LICENSE
+// For license information, see https://github.com/OffchainLabs/nitro/blob/master/LICENSE.md
 
 package gethexec
 
@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/arbitrum"
 	"github.com/ethereum/go-ethereum/arbitrum_types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -79,8 +78,13 @@ type SequencerConfig struct {
 	ExpectedSurplusHardThreshold string          `koanf:"expected-surplus-hard-threshold" reload:"hot"`
 	EnableProfiling              bool            `koanf:"enable-profiling" reload:"hot"`
 	Timeboost                    TimeboostConfig `koanf:"timeboost"`
+	Dangerous                    DangerousConfig `koanf:"dangerous"`
 	expectedSurplusSoftThreshold int
 	expectedSurplusHardThreshold int
+}
+
+type DangerousConfig struct {
+	DisableSeqInboxMaxDataSizeCheck bool `koanf:"disable-seq-inbox-max-data-size-check"`
 }
 
 type TimeboostConfig struct {
@@ -175,6 +179,11 @@ var DefaultSequencerConfig = SequencerConfig{
 	ExpectedSurplusHardThreshold: "default",
 	EnableProfiling:              false,
 	Timeboost:                    DefaultTimeboostConfig,
+	Dangerous:                    DefaultDangerousConfig,
+}
+
+var DefaultDangerousConfig = DangerousConfig{
+	DisableSeqInboxMaxDataSizeCheck: false,
 }
 
 func SequencerConfigAddOptions(prefix string, f *flag.FlagSet) {
@@ -186,6 +195,7 @@ func SequencerConfigAddOptions(prefix string, f *flag.FlagSet) {
 	AddOptionsForSequencerForwarderConfig(prefix+".forwarder", f)
 	TimeboostAddOptions(prefix+".timeboost", f)
 
+	DangerousAddOptions(prefix+".dangerous", f)
 	f.Int(prefix+".queue-size", DefaultSequencerConfig.QueueSize, "size of the pending tx queue")
 	f.Duration(prefix+".queue-timeout", DefaultSequencerConfig.QueueTimeout, "maximum amount of time transaction can wait in queue")
 	f.Int(prefix+".nonce-cache-size", DefaultSequencerConfig.NonceCacheSize, "size of the tx sender nonce cache")
@@ -208,6 +218,10 @@ func TimeboostAddOptions(prefix string, f *flag.FlagSet) {
 	f.String(prefix+".redis-url", DefaultTimeboostConfig.RedisUrl, "the Redis URL for expressLaneService to coordinate via")
 	f.Uint64(prefix+".redis-update-events-channel-size", DefaultTimeboostConfig.RedisUpdateEventsChannelSize, "size of update events' buffered channels in timeboost redis coordinator")
 	f.Uint64(prefix+".queue-timeout-in-blocks", DefaultTimeboostConfig.QueueTimeoutInBlocks, "maximum amount of time (measured in blocks) that Express Lane transactions can wait in the sequencer's queue")
+}
+
+func DangerousAddOptions(prefix string, f *flag.FlagSet) {
+	f.Bool(prefix+".disable-seq-inbox-max-data-size-check", DefaultDangerousConfig.DisableSeqInboxMaxDataSizeCheck, "DANGEROUS! disables nitro checks on sequencer MaxTxDataSize against the sequencer inbox MaxDataSize")
 }
 
 type txQueueItem struct {
@@ -567,7 +581,7 @@ func (s *Sequencer) PublishAuctionResolutionTransaction(ctx context.Context, tx 
 		returnedResult:  &atomic.Bool{},
 		ctx:             s.GetContext(),
 		firstAppearance: time.Now(),
-		isTimeboosted:   true,
+		isTimeboosted:   false,
 	}
 	return nil
 }
@@ -730,7 +744,8 @@ func (s *Sequencer) CheckHealth(ctx context.Context) error {
 	if pauseChan != nil {
 		return nil
 	}
-	return s.execEngine.consensus.ExpectChosenSequencer()
+	_, err := s.execEngine.consensus.ExpectChosenSequencer().Await(ctx)
+	return err
 }
 
 func (s *Sequencer) ForwardTarget() string {
@@ -901,7 +916,8 @@ func (s *Sequencer) precheckNonces(queueItems []txQueueItem, totalBlockSize int)
 		return queueItems
 	}
 	nextHeaderNumber := arbmath.BigAdd(latestHeader.Number, common.Big1)
-	signer := types.MakeSigner(bc.Config(), nextHeaderNumber, latestHeader.Time)
+	arbosVersion := types.DeserializeHeaderExtraInformation(latestHeader).ArbOSFormatVersion
+	signer := types.MakeSigner(bc.Config(), nextHeaderNumber, latestHeader.Time, arbosVersion)
 	outputQueueItems := make([]txQueueItem, 0, len(queueItems))
 	var nextQueueItem *txQueueItem
 	var queueItemsIdx int
@@ -1316,7 +1332,10 @@ func (s *Sequencer) updateExpectedSurplus(ctx context.Context) (int64, error) {
 	l1GasPrice := header.BaseFee.Uint64()
 	if header.BlobGasUsed != nil {
 		if header.ExcessBlobGas != nil {
-			blobFeePerByte := eip4844.CalcBlobFee(eip4844.CalcExcessBlobGas(*header.ExcessBlobGas, *header.BlobGasUsed))
+			blobFeePerByte, err := s.l1Reader.Client().BlobBaseFee(ctx)
+			if err != nil {
+				return 0, fmt.Errorf("error encountered getting blob base fee while updating expectedSurplus: %w", err)
+			}
 			blobFeePerByte.Mul(blobFeePerByte, blobTxBlobGasPerBlob)
 			blobFeePerByte.Div(blobFeePerByte, usableBytesInBlob)
 			if l1GasPrice > blobFeePerByte.Uint64()/16 {
