@@ -146,10 +146,12 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
 	tracer := evm.Config.Tracer
+	tracingStateDB := evm.StateDB
 	if tracer != nil && tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
 		tracer = nil
+		tracingStateDB = evm.StateDB.GetInner().(vm.StateDB)
 	}
 
 	startTracer := func() func() {
@@ -163,7 +165,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		evm.IncrementDepth() // fake a call
 
 		tracingInfo = util.NewTracingInfo(evm, from, *p.msg.To, util.TracingDuringEVM)
-		p.state = arbosState.OpenSystemArbosStateOrPanic(evm.StateDB, tracingInfo, false)
+		p.state = arbosState.OpenSystemArbosStateOrPanic(tracingStateDB, tracingInfo, false)
 
 		return func() {
 			evm.DecrementDepth() // fake the return to the first faked call
@@ -172,7 +174,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 			}
 
 			tracingInfo = util.NewTracingInfo(evm, from, *p.msg.To, util.TracingAfterEVM)
-			p.state = arbosState.OpenSystemArbosStateOrPanic(evm.StateDB, tracingInfo, false)
+			p.state = arbosState.OpenSystemArbosStateOrPanic(tracingStateDB, tracingInfo, false)
 		}
 	}
 
@@ -191,7 +193,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		// This transfer is necessary because we don't actually invoke the EVM.
 		// Since MintBalance already called AddBalance on `from`,
 		// we don't have EIP-161 concerns around not touching `from`.
-		core.Transfer(evm.StateDB, from, *to, uint256.MustFromBig(value))
+		core.Transfer(tracingStateDB, from, *to, uint256.MustFromBig(value))
 		return true, 0, nil, nil
 	case *types.ArbitrumInternalTx:
 		defer (startTracer())()
@@ -202,7 +204,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		return true, 0, err, nil
 	case *types.ArbitrumSubmitRetryableTx:
 		defer (startTracer())()
-		statedb := evm.StateDB
+		statedb := tracingStateDB
 		ticketId := underlyingTx.Hash()
 		escrow := retryables.RetryableEscrowAddress(ticketId)
 		networkFeeAccount, _ := p.state.NetworkFeeAccount()
@@ -219,7 +221,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		}
 
 		// check that the user has enough balance to pay for the max submission fee
-		balanceAfterMint := evm.StateDB.GetBalance(tx.From)
+		balanceAfterMint := tracingStateDB.GetBalance(tx.From)
 		if balanceAfterMint.ToBig().Cmp(tx.MaxSubmissionFee) < 0 {
 			err := fmt.Errorf(
 				"insufficient funds for max submission fee: address %v have %v want %v",
@@ -514,6 +516,16 @@ func (p *TxProcessor) ForceRefundGas() uint64 {
 
 func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 
+	// Only Firehose tracer has OnBlockUpdate defined, we can use
+	tracer := p.evm.Config.Tracer
+	tracingStateDB := p.evm.StateDB
+	if tracer != nil && tracer.OnBlockUpdate != nil {
+		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
+		// of tracer call below don't respect the `Firehose` tracer's expectations.
+		tracer = nil
+		tracingStateDB = p.evm.StateDB.GetInner().(vm.StateDB)
+	}
+
 	underlyingTx := p.msg.Tx
 	networkFeeAccount, _ := p.state.NetworkFeeAccount()
 	scenario := util.TracingAfterEVM
@@ -554,7 +566,7 @@ func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 					return
 				}
 				logLevel := log.Error
-				isContract := p.evm.StateDB.GetCodeSize(refundFrom) > 0
+				isContract := tracingStateDB.GetCodeSize(refundFrom) > 0
 				if isContract {
 					// It's expected that the balance might not still be in this address if it's a contract.
 					logLevel = log.Debug
@@ -608,7 +620,7 @@ func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 		if success {
 			// we don't want to charge for this
 			tracingInfo := util.NewTracingInfo(p.evm, arbosAddress, p.msg.From, scenario)
-			state := arbosState.OpenSystemArbosStateOrPanic(p.evm.StateDB, tracingInfo, false)
+			state := arbosState.OpenSystemArbosStateOrPanic(tracingStateDB, tracingInfo, false)
 			_, _ = state.RetryableState().DeleteRetryable(inner.TicketId, p.evm, scenario)
 		} else {
 			// return the Callvalue to escrow

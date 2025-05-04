@@ -103,10 +103,10 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 		),
 		Contract: contract,
 	}
-	if tracer.OnOpcode != nil {
+	if tracer != nil && tracer.OnOpcode != nil {
 		tracer.OnOpcode(0, byte(vm.CALL), 0, 0, scope, []byte{}, depth, nil)
 	}
-	if tracer.OnEnter != nil {
+	if tracer != nil && tracer.OnEnter != nil {
 		tracer.OnEnter(depth, byte(vm.CALL), from, to, input, gas, amount)
 	}
 
@@ -118,10 +118,10 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 		),
 		Contract: contract,
 	}
-	if tracer.OnOpcode != nil {
+	if tracer != nil && tracer.OnOpcode != nil {
 		tracer.OnOpcode(0, byte(vm.RETURN), 0, 0, retScope, []byte{}, depth+1, nil)
 	}
-	if tracer.OnExit != nil {
+	if tracer != nil && tracer.OnExit != nil {
 		tracer.OnExit(depth, nil, 0, nil, false)
 	}
 
@@ -132,7 +132,7 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 		),
 		Contract: contract,
 	}
-	if tracer.OnOpcode != nil {
+	if tracer != nil && tracer.OnOpcode != nil {
 		tracer.OnOpcode(0, byte(vm.POP), 0, 0, popScope, []byte{}, depth, nil)
 	}
 }
