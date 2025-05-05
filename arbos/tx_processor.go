@@ -522,13 +522,19 @@ func (p *TxProcessor) ForceRefundGas() uint64 {
 func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
-	tracer := p.evm.Config.Tracer
-	tracingStateDB := p.evm.StateDB
-	if tracer != nil && tracer.OnBlockUpdate != nil {
+	if p.evm.Config.Tracer != nil && p.evm.Config.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
-		tracer = nil
-		tracingStateDB = p.evm.StateDB.GetInner().(vm.StateDB)
+		origTracer := p.evm.Config.Tracer
+		origStateDB := p.evm.StateDB
+
+		p.evm.StateDB = p.evm.StateDB.GetInner().(vm.StateDB)
+		p.evm.Config.Tracer = nil
+
+		defer func() {
+			p.evm.Config.Tracer = origTracer // Restore the original tracer
+			p.evm.StateDB = origStateDB      // Restore the original statedb with tracer
+		}()
 	}
 
 	underlyingTx := p.msg.Tx
@@ -571,7 +577,7 @@ func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 					return
 				}
 				logLevel := log.Error
-				isContract := tracingStateDB.GetCodeSize(refundFrom) > 0
+				isContract := p.evm.StateDB.GetCodeSize(refundFrom) > 0
 				if isContract {
 					// It's expected that the balance might not still be in this address if it's a contract.
 					logLevel = log.Debug
@@ -625,7 +631,7 @@ func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 		if success {
 			// we don't want to charge for this
 			tracingInfo := util.NewTracingInfo(p.evm, arbosAddress, p.msg.From, scenario)
-			state := arbosState.OpenSystemArbosStateOrPanic(tracingStateDB, tracingInfo, false)
+			state := arbosState.OpenSystemArbosStateOrPanic(p.evm.StateDB, tracingInfo, false)
 			_, _ = state.RetryableState().DeleteRetryable(inner.TicketId, p.evm, scenario)
 		} else {
 			// return the Callvalue to escrow
