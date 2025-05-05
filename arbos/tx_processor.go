@@ -145,36 +145,42 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 	evm := p.evm
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
-	tracer := evm.Config.Tracer
-	tracingStateDB := evm.StateDB
-	if tracer != nil && tracer.OnBlockUpdate != nil {
+	if evm.Config.Tracer != nil && evm.Config.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
-		tracer = nil
-		tracingStateDB = evm.StateDB.GetInner().(vm.StateDB)
+		origTracer := evm.Config.Tracer
+		origStateDB := evm.StateDB
+
+		evm.StateDB = evm.StateDB.GetInner().(vm.StateDB)
+		evm.Config.Tracer = nil
+
+		defer func() {
+			evm.Config.Tracer = origTracer // Restore the original tracer
+			evm.StateDB = origStateDB      // Restore the original statedb with tracer
+		}()
 	}
 
 	startTracer := func() func() {
-		if tracer == nil {
+		if evm.Config.Tracer == nil {
 			return func() {}
 		}
 		from := p.msg.From
-		if tracer.OnEnter != nil {
-			tracer.OnEnter(evm.Depth(), byte(vm.CALL), from, *p.msg.To, p.msg.Data, p.msg.GasLimit, p.msg.Value)
+		if evm.Config.Tracer.OnEnter != nil {
+			evm.Config.Tracer.OnEnter(evm.Depth(), byte(vm.CALL), from, *p.msg.To, p.msg.Data, p.msg.GasLimit, p.msg.Value)
 		}
 		evm.IncrementDepth() // fake a call
 
 		tracingInfo = util.NewTracingInfo(evm, from, *p.msg.To, util.TracingDuringEVM)
-		p.state = arbosState.OpenSystemArbosStateOrPanic(tracingStateDB, tracingInfo, false)
+		p.state = arbosState.OpenSystemArbosStateOrPanic(evm.StateDB, tracingInfo, false)
 
 		return func() {
 			evm.DecrementDepth() // fake the return to the first faked call
-			if tracer.OnExit != nil {
-				tracer.OnExit(evm.Depth(), nil, p.state.Burner.Burned(), nil, false)
+			if evm.Config.Tracer.OnExit != nil {
+				evm.Config.Tracer.OnExit(evm.Depth(), nil, p.state.Burner.Burned(), nil, false)
 			}
 
 			tracingInfo = util.NewTracingInfo(evm, from, *p.msg.To, util.TracingAfterEVM)
-			p.state = arbosState.OpenSystemArbosStateOrPanic(tracingStateDB, tracingInfo, false)
+			p.state = arbosState.OpenSystemArbosStateOrPanic(evm.StateDB, tracingInfo, false)
 		}
 	}
 
@@ -193,7 +199,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		// This transfer is necessary because we don't actually invoke the EVM.
 		// Since MintBalance already called AddBalance on `from`,
 		// we don't have EIP-161 concerns around not touching `from`.
-		core.Transfer(tracingStateDB, from, *to, uint256.MustFromBig(value))
+		core.Transfer(evm.StateDB, from, *to, uint256.MustFromBig(value))
 		return true, 0, nil, nil
 	case *types.ArbitrumInternalTx:
 		defer (startTracer())()
@@ -204,7 +210,6 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		return true, 0, err, nil
 	case *types.ArbitrumSubmitRetryableTx:
 		defer (startTracer())()
-		statedb := tracingStateDB
 		ticketId := underlyingTx.Hash()
 		escrow := retryables.RetryableEscrowAddress(ticketId)
 		networkFeeAccount, _ := p.state.NetworkFeeAccount()
@@ -221,7 +226,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		}
 
 		// check that the user has enough balance to pay for the max submission fee
-		balanceAfterMint := tracingStateDB.GetBalance(tx.From)
+		balanceAfterMint := evm.StateDB.GetBalance(tx.From)
 		if balanceAfterMint.ToBig().Cmp(tx.MaxSubmissionFee) < 0 {
 			err := fmt.Errorf(
 				"insufficient funds for max submission fee: address %v have %v want %v",
@@ -294,7 +299,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 			glog.Error("failed to emit TicketCreated event", "err", err)
 		}
 
-		balance := statedb.GetBalance(tx.From)
+		balance := evm.StateDB.GetBalance(tx.From)
 		// evm.Context.BaseFee is already lowered to 0 when vm runs with NoBaseFee flag and 0 gas price
 		effectiveBaseFee := evm.Context.BaseFee
 		usergas := p.msg.GasLimit
@@ -382,7 +387,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 			glog.Error("failed to emit RedeemScheduled event", "err", err)
 		}
 
-		if tracer != nil {
+		if evm.Config.Tracer != nil {
 			redeem, err := util.PackArbRetryableTxRedeem(ticketId)
 			if err == nil {
 				tracingInfo.MockCall(redeem, usergas, from, types.ArbRetryableTxAddress, common.Big0)
