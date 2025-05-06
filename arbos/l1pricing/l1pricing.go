@@ -281,6 +281,8 @@ func (ps *L1PricingState) TransferFromL1FeesAvailable(
 	scenario util.TracingScenario,
 	reason tracing.BalanceChangeReason,
 ) (*big.Int, error) {
+
+	fmt.Printf("TransferFromL1FeesAvailable: %T\n", evm.StateDB)
 	if err := util.TransferBalance(&L1PricerFundsPoolAddress, &recipient, amount, evm, scenario, reason); err != nil {
 		return nil, err
 	}
