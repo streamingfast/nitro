@@ -966,7 +966,7 @@ func (s *ExecutionEngine) digestMessageWithBlockMutex(msgIdxToDigest arbutil.Mes
 	startTime := time.Now()
 	if s.prefetchBlock && msgForPrefetch != nil {
 		go func() {
-			_, _, _, err := s.createBlockFromNextMessage(msgForPrefetch, true, s.tracer)
+			_, _, _, err := s.createBlockFromNextMessage(msgForPrefetch, true, nil)
 			if err != nil {
 				return
 			}
