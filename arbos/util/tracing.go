@@ -78,14 +78,6 @@ func (info *TracingInfo) RecordStorageSet(key, value common.Hash) {
 
 func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Address, amount *big.Int) {
 	tracer := info.Tracer
-
-	// Only Firehose tracer has OnBlockUpdate defined, we can use
-	if tracer != nil && tracer.OnBlockUpdate != nil {
-		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
-		// of tracer call below don't respect the `Firehose` tracer's expectations.
-		tracer = nil
-	}
-
 	depth := info.Depth
 
 	contract := vm.NewContract(to, from, uint256.MustFromBig(amount), gas, info.Contract.Jumpdest())
@@ -103,10 +95,10 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 		),
 		Contract: contract,
 	}
-	if tracer != nil && tracer.OnOpcode != nil {
+	if tracer.OnOpcode != nil {
 		tracer.OnOpcode(0, byte(vm.CALL), 0, 0, scope, []byte{}, depth, nil)
 	}
-	if tracer != nil && tracer.OnEnter != nil {
+	if tracer.OnEnter != nil {
 		tracer.OnEnter(depth, byte(vm.CALL), from, to, input, gas, amount)
 	}
 
@@ -118,10 +110,10 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 		),
 		Contract: contract,
 	}
-	if tracer != nil && tracer.OnOpcode != nil {
+	if tracer.OnOpcode != nil {
 		tracer.OnOpcode(0, byte(vm.RETURN), 0, 0, retScope, []byte{}, depth+1, nil)
 	}
-	if tracer != nil && tracer.OnExit != nil {
+	if tracer.OnExit != nil {
 		tracer.OnExit(depth, nil, 0, nil, false)
 	}
 
@@ -132,7 +124,7 @@ func (info *TracingInfo) MockCall(input []byte, gas uint64, from, to common.Addr
 		),
 		Contract: contract,
 	}
-	if tracer != nil && tracer.OnOpcode != nil {
+	if tracer.OnOpcode != nil {
 		tracer.OnOpcode(0, byte(vm.POP), 0, 0, popScope, []byte{}, depth, nil)
 	}
 }

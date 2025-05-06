@@ -34,16 +34,14 @@ func TransferBalance(
 	}
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
-	tracer := evm.Config.Tracer
-	tracingStateDB := evm.StateDB
-	if tracer != nil && tracer.OnBlockUpdate != nil {
+	firehoseTracingIgnored := false
+	if evm.Config.Tracer != nil && evm.Config.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
-		tracer = nil
-		tracingStateDB = evm.StateDB.GetInner().(vm.StateDB)
+		firehoseTracingIgnored = true
 	}
 
-	if tracer != nil {
+	if tracer := evm.Config.Tracer; tracer != nil && !firehoseTracingIgnored {
 		if evm.Depth() != 0 && scenario != TracingDuringEVM {
 			// A non-zero depth implies this transfer is occurring inside EVM execution
 			log.Error("Tracing scenario mismatch", "scenario", scenario, "depth", evm.Depth())
@@ -74,17 +72,17 @@ func TransferBalance(
 		}
 	}
 	if from != nil {
-		balance := tracingStateDB.GetBalance(*from)
+		balance := evm.StateDB.GetBalance(*from)
 		if arbmath.BigLessThan(balance.ToBig(), amount) {
 			return fmt.Errorf("%w: addr %v have %v want %v", vm.ErrInsufficientBalance, *from, balance, amount)
 		}
 		if evm.Context.ArbOSVersion < params.ArbosVersion_Stylus && amount.Sign() == 0 {
-			tracingStateDB.CreateZombieIfDeleted(*from)
+			evm.StateDB.CreateZombieIfDeleted(*from)
 		}
-		tracingStateDB.SubBalance(*from, uint256.MustFromBig(amount), reason)
+		evm.StateDB.SubBalance(*from, uint256.MustFromBig(amount), reason)
 	}
 	if to != nil {
-		tracingStateDB.AddBalance(*to, uint256.MustFromBig(amount), reason)
+		evm.StateDB.AddBalance(*to, uint256.MustFromBig(amount), reason)
 	}
 	return nil
 }

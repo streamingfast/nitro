@@ -145,28 +145,21 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 	evm := p.evm
 
 	// Only Firehose tracer has OnBlockUpdate defined, we can use
+	firehoseTracingIgnored := false
 	if evm.Config.Tracer != nil && evm.Config.Tracer.OnBlockUpdate != nil {
 		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
 		// of tracer call below don't respect the `Firehose` tracer's expectations.
-		origTracer := evm.Config.Tracer
-		origStateDB := evm.StateDB
-
-		evm.StateDB = evm.StateDB.GetInner().(vm.StateDB)
-		evm.Config.Tracer = nil
-
-		defer func() {
-			evm.Config.Tracer = origTracer // Restore the original tracer
-			evm.StateDB = origStateDB      // Restore the original statedb with tracer
-		}()
+		firehoseTracingIgnored = true
 	}
 
 	startTracer := func() func() {
-		if evm.Config.Tracer == nil {
+		tracer := evm.Config.Tracer
+		if firehoseTracingIgnored || tracer == nil {
 			return func() {}
 		}
 		from := p.msg.From
-		if evm.Config.Tracer.OnEnter != nil {
-			evm.Config.Tracer.OnEnter(evm.Depth(), byte(vm.CALL), from, *p.msg.To, p.msg.Data, p.msg.GasLimit, p.msg.Value)
+		if tracer.OnEnter != nil {
+			tracer.OnEnter(evm.Depth(), byte(vm.CALL), from, *p.msg.To, p.msg.Data, p.msg.GasLimit, p.msg.Value)
 		}
 		evm.IncrementDepth() // fake a call
 
@@ -175,8 +168,8 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 
 		return func() {
 			evm.DecrementDepth() // fake the return to the first faked call
-			if evm.Config.Tracer.OnExit != nil {
-				evm.Config.Tracer.OnExit(evm.Depth(), nil, p.state.Burner.Burned(), nil, false)
+			if tracer.OnExit != nil {
+				tracer.OnExit(evm.Depth(), nil, p.state.Burner.Burned(), nil, false)
 			}
 
 			tracingInfo = util.NewTracingInfo(evm, from, *p.msg.To, util.TracingAfterEVM)
@@ -210,6 +203,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 		return true, 0, err, nil
 	case *types.ArbitrumSubmitRetryableTx:
 		defer (startTracer())()
+		statedb := evm.StateDB
 		ticketId := underlyingTx.Hash()
 		escrow := retryables.RetryableEscrowAddress(ticketId)
 		networkFeeAccount, _ := p.state.NetworkFeeAccount()
@@ -299,7 +293,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 			glog.Error("failed to emit TicketCreated event", "err", err)
 		}
 
-		balance := evm.StateDB.GetBalance(tx.From)
+		balance := statedb.GetBalance(tx.From)
 		// evm.Context.BaseFee is already lowered to 0 when vm runs with NoBaseFee flag and 0 gas price
 		effectiveBaseFee := evm.Context.BaseFee
 		usergas := p.msg.GasLimit
@@ -387,7 +381,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, gasUsed uint64, err error, r
 			glog.Error("failed to emit RedeemScheduled event", "err", err)
 		}
 
-		if evm.Config.Tracer != nil {
+		if tracer := evm.Config.Tracer; tracer != nil && !firehoseTracingIgnored {
 			redeem, err := util.PackArbRetryableTxRedeem(ticketId)
 			if err == nil {
 				tracingInfo.MockCall(redeem, usergas, from, types.ArbRetryableTxAddress, common.Big0)
@@ -520,22 +514,6 @@ func (p *TxProcessor) ForceRefundGas() uint64 {
 }
 
 func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
-
-	// Only Firehose tracer has OnBlockUpdate defined, we can use
-	if p.evm.Config.Tracer != nil && p.evm.Config.Tracer.OnBlockUpdate != nil {
-		// FIXME: It seems having the `Firehose` tracer enabled causes a problem since most probably, the series
-		// of tracer call below don't respect the `Firehose` tracer's expectations.
-		origTracer := p.evm.Config.Tracer
-		origStateDB := p.evm.StateDB
-
-		p.evm.StateDB = p.evm.StateDB.GetInner().(vm.StateDB)
-		p.evm.Config.Tracer = nil
-
-		defer func() {
-			p.evm.Config.Tracer = origTracer // Restore the original tracer
-			p.evm.StateDB = origStateDB      // Restore the original statedb with tracer
-		}()
-	}
 
 	underlyingTx := p.msg.Tx
 	networkFeeAccount, _ := p.state.NetworkFeeAccount()
