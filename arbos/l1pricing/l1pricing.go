@@ -311,6 +311,7 @@ func (ps *L1PricingState) UpdateForBatchPosterSpending(
 	l1Basefee *big.Int,
 	scenario util.TracingScenario,
 ) error {
+	fmt.Printf("inside UpdateForBatchPosterSpending, %T, evm.StateDB: %T\n", statedb, evm.StateDB)
 	if arbosVersion < params.ArbosVersion_10 {
 		return ps._preversion10_UpdateForBatchPosterSpending(statedb, evm, arbosVersion, updateTime, currentTime, batchPoster, weiSpent, l1Basefee, scenario)
 	}
