@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"runtime/debug"
 
 	"github.com/holiman/uint256"
 
@@ -665,7 +664,6 @@ func (p *TxProcessor) EndTxHook(gasLeft uint64, success bool) {
 		posterFeeDestination = p.evm.Context.Coinbase
 	}
 	fmt.Printf("MintBalance, posterFeeDestination: %s, evm state %T\n", posterFeeDestination, p.evm.StateDB)
-	debug.PrintStack()
 	util.MintBalance(&posterFeeDestination, p.PosterFee, p.evm, scenario, tracing.BalanceIncreaseL1PosterFee)
 	if p.state.ArbOSVersion() >= params.ArbosVersion_10 {
 		if _, err := p.state.L1PricingState().AddToL1FeesAvailable(p.PosterFee); err != nil {

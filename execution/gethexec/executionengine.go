@@ -33,8 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/stateless"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -966,7 +966,7 @@ func (s *ExecutionEngine) digestMessageWithBlockMutex(msgIdxToDigest arbutil.Mes
 	startTime := time.Now()
 	if s.prefetchBlock && msgForPrefetch != nil {
 		go func() {
-			_, _, _, err := s.createBlockFromNextMessage(msgForPrefetch, true, nil)
+			_, _, _, err := s.createBlockFromNextMessage(msgForPrefetch, true, s.tracer)
 			if err != nil {
 				return
 			}
