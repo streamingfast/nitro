@@ -207,5 +207,5 @@ require (
 	github.com/mitchellh/pointerstructure v1.2.0 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/streamingfast/firehose-ethereum/types v0.0.0-20250502192144-4104b54462f7 // indirect
+	github.com/streamingfast/firehose-ethereum/types v0.0.0-20250507011922-e3d3efeda61d // indirect
 )
