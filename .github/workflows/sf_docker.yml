@@ -1,0 +1,101 @@
+name: Docker build CI (StreamingFast version)
+run-name: Docker build CI triggered from @${{ github.actor }} of ${{ github.head_ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      firehose_ethereum_image:
+        description: 'Firehose Ethereum Docker image'
+        required: false
+        default: 'ghcr.io/streamingfast/firehose-ethereum:latest'
+  merge_group:
+  pull_request:
+  push:
+    tags:
+      - '*'
+    branches:
+      - release/*
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  FIREHOSE_ETHEREUM_IMAGE: ${{ github.event.inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
+
+jobs:
+  docker:
+    name: Docker build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Delete files
+        shell: bash
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract versions
+        id: extract-versions
+        run: |
+          version="edge-${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version=${GITHUB_REF#refs/tags/}
+          fi
+
+          fireeth_version=$(docker inspect ${{ env.FIREHOSE_ETHEREUM_IMAGE }} --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
+
+          echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
+          echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
+          echo "FIREETH_DOCKER_SUFFIX=${version}-fireeth-${fireeth_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate docker tags/labels from github build context
+        id: meta-bare
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=
+            type=raw,value=${{ steps.extract-versions.outputs.VERSION }}
+            type=raw,value=${{ steps.extract-versions.outputs.VERSION }},suffix=${{ steps.extract-versions.outputs.FIREETH_DOCKER_SUFFIX }}
+            type=raw,enable=${{ github.ref == 'refs/heads/develop' }},value=develop
+
+      - name: Build and push nitro Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: nitro-node
+          file: ./Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
+          labels: ${{ steps.meta-bare.outputs.labels }}
+
+      - name: Build and push final (fireeth + nitro) Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.sf
+          push: true
+          build-args: |
+            NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
+            FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
+          tags: ${{ steps.meta-bare.outputs.tags }}
+          labels: ${{ steps.meta-bare.outputs.labels }}
