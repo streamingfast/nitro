@@ -3,6 +3,7 @@ run-name: Docker build CI triggered from @${{ github.actor }} of ${{ github.head
 
 on:
   workflow_dispatch:
+  merge_group:
   pull_request:
   push:
     tags:
@@ -34,7 +35,7 @@ jobs:
           df -h
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -56,6 +57,13 @@ jobs:
             type=ref,event=tag,priority=1000,prefix=nitro-
             type=ref,enable=true,priority=600,prefix=nitro-,suffix=,event=branch
 
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile') }}
+          restore-keys: ${{ runner.os }}-buildx-
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -65,3 +73,21 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
+        # Temp fix
+        # https://github.com/docker/build-push-action/issues/252
+        # https://github.com/moby/buildkit/issues/1896
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Clear cache on failure
+        if: failure()
+        run: |
+          keys=(${{ runner.os }}-buildx- ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile') }})
+          for key in "${keys[@]}"; do
+            curl -X DELETE -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/actions/caches/$key"
+          done
