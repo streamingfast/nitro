@@ -61,18 +61,15 @@ jobs:
             version=${GITHUB_REF#refs/tags/}
           fi
 
-          # Debug: Check if environment variable is set
-          echo "FIREHOSE_ETHEREUM_IMAGE is: $FIREHOSE_ETHEREUM_IMAGE"
-
-          # Use the default value directly since env var might not be available in this context
+          # Use the firehose ethereum image
           firehose_image="${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
           echo "Using firehose image: $firehose_image"
 
+          # Pull the image first to inspect it
+          docker pull "$firehose_image"
+
           fireeth_version=$(docker inspect "$firehose_image" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
           echo "Inspected fireeth_version: $fireeth_version"
-
-          fireeth_version2=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
-          echo "Inspected fireeth_version2: $fireeth_version2"
 
           echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
           echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
