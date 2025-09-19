@@ -34,8 +34,8 @@ jobs:
         shell: bash
         run: |
           df -h
-          sudo rm -rf /usr/local/lib/android
-          # sudo rm -rf /opt/ghc
+          # sudo rm -rf /usr/local/lib/android # 9 GiB in 3m 52s
+          sudo rm -rf /opt/ghc
           # sudo rm -rf /opt/hostedtoolcache/CodeQL
           df -h
 
@@ -59,7 +59,17 @@ jobs:
             version=${GITHUB_REF#refs/tags/}
           fi
 
-          fireeth_version=$(docker inspect "$FIREHOSE_ETHEREUM_IMAGE" --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
+          # Debug: Check if environment variable is set
+          echo "FIREHOSE_ETHEREUM_IMAGE is: $FIREHOSE_ETHEREUM_IMAGE"
+
+          # Use the default value directly since env var might not be available in this context
+          firehose_image="${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
+          echo "Using firehose image: $firehose_image"
+
+          fireeth_version=$(docker inspect "$firehose_image" --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
+
+          # Clean version strings for GitHub output
+          fireeth_version=$(echo "$fireeth_version" | tr -d '\n\r' | sed 's/[^a-zA-Z0-9.-]/_/g')
 
           echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
           echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
