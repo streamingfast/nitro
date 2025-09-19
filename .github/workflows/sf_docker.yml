@@ -34,8 +34,7 @@ jobs:
         shell: bash
         run: |
           df -h
-          sudo rm -rf /usr/share/dotnet
-          # sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/local/lib/android
           # sudo rm -rf /opt/ghc
           # sudo rm -rf /opt/hostedtoolcache/CodeQL
           df -h
@@ -60,7 +59,7 @@ jobs:
             version=${GITHUB_REF#refs/tags/}
           fi
 
-          fireeth_version=$(docker inspect ${{ env.FIREHOSE_ETHEREUM_IMAGE }} --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
+          fireeth_version=$(docker inspect "$FIREHOSE_ETHEREUM_IMAGE" --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
 
           echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
           echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
