@@ -32,8 +32,8 @@ jobs:
         shell: bash
         run: |
           # September 19th, 2025, this is still required to get enough space to build
-          du -sh /usr/local/lib/android/sdk/ndk*
-          du -sh /usr/local/lib/android/sdk/system-images
+          sudo du -sh /usr/local/lib/android/sdk/ndk*
+          sudo du -sh /usr/local/lib/android/sdk/system-images
 
           df -h
           sudo time rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is usually largest
