@@ -33,8 +33,11 @@ jobs:
         run: |
           # September 19th, 2025, this is still required to get enough space to build
           df -h
-          # sudo rm -rf /usr/local/lib/android # 9 GiB in 3m 52s
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          # Delete largest directories first for faster cleanup
+          sudo time rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is usually largest
+          sudo time rm -rf /usr/local/lib/android/sdk/system-images &  # System images
+          sudo time rm -rf /opt/hostedtoolcache/CodeQL &  # 1 GiB in 15s
+          wait  # Wait for background deletions to complete
           df -h
 
       - name: Checkout
