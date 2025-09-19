@@ -36,6 +36,7 @@ jobs:
           # Delete largest directories first for faster cleanup
           sudo time rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is usually largest
           sudo time rm -rf /usr/local/lib/android/sdk/system-images &  # System images
+          sudo time rm -rf /usr/local/lib/android/sdk/platforms &  # Platform APIs
           sudo time rm -rf /opt/hostedtoolcache/CodeQL &  # 1 GiB in 15s
           wait  # Wait for background deletions to complete
           df -h
@@ -67,10 +68,10 @@ jobs:
           firehose_image="${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
           echo "Using firehose image: $firehose_image"
 
-          fireeth_version=$(docker inspect "$firehose_image" --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
+          fireeth_version=$(docker inspect "$firehose_image" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
           echo "Inspected fireeth_version: $fireeth_version"
 
-          fireeth_version2=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo "unknown-version")
+          fireeth_version2=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
           echo "Inspected fireeth_version2: $fireeth_version2"
 
           echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
