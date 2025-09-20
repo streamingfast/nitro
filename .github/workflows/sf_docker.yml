@@ -32,13 +32,9 @@ jobs:
         shell: bash
         run: |
           # September 19th, 2025, this is still required to get enough space to build
-          sudo du -sh /usr/local/lib/android/sdk/ndk*
-          sudo du -sh /usr/local/lib/android/sdk/system-images
-
           df -h
-          sudo time rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is usually largest
-          sudo time rm -rf /usr/local/lib/android/sdk/system-images &  # System images
-          sudo time rm -rf /opt/hostedtoolcache/CodeQL &  # 1 GiB in 15s
+          sudo rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is 6.2G
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &  # 1 GiB in 15s
           wait  # Wait for background deletions to complete
           df -h
 
@@ -62,15 +58,8 @@ jobs:
             version=${GITHUB_REF#refs/tags/}
           fi
 
-          # Use the firehose ethereum image
-          firehose_image="${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
-          echo "Using firehose image: $firehose_image"
-
-          # Pull the image first to inspect it
-          docker pull "$firehose_image"
-
-          fireeth_version=$(docker inspect "$firehose_image" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
-          echo "Inspected fireeth_version: $fireeth_version"
+          docker pull "${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
+          fireeth_version=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
 
           echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
           echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
