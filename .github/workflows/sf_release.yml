@@ -20,8 +20,8 @@ env:
   FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
 
 jobs:
-  docker:
-    name: Docker build
+  push:
+    name: Docker build & push
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -98,3 +98,29 @@ jobs:
             FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
           tags: ${{ steps.meta-bare.outputs.tags }}
           labels: ${{ steps.meta-bare.outputs.labels }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: push
+    runs-on: ubuntu-24.04
+    permissions:
+        contents: write
+
+    steps:
+      - name: Extract image
+        id: image
+        run: |
+          # The run is done only on tags, so we can ref/tags/ replace directly here
+          echo "ID=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract assets
+        run: |
+          # The --platform are not really needed here, but it removes the warning
+          docker cp $(docker create --platform=linux/amd64 ${{ steps.image.outputs.ID }}):/usr/local/bin/nitro ./nitro_linux_amd64
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          files: |
+            ./nitro_linux_amd64
