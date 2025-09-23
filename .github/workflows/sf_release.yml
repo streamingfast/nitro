@@ -118,9 +118,20 @@ jobs:
           # The --platform are not really needed here, but it removes the warning
           docker cp $(docker create --platform=linux/amd64 ${{ steps.image.outputs.ID }}):/usr/local/bin/nitro ./nitro_linux_amd64
 
+      - name: Extract Changelog
+        id: changelog
+        run: |
+          chmod 755 ./.github/generate_change_log.sh
+          CHANGELOG=$(./.github/generate_change_log.sh)
+
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo "$CHANGELOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
+          body: ${{ env.CHANGELOG }}
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
           files: |
             ./nitro_linux_amd64
