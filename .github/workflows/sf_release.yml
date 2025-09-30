@@ -1,0 +1,137 @@
+name: Docker build CI (StreamingFast version)
+run-name: Docker build CI triggered from @${{ github.actor }} of ${{ github.head_ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      firehose_ethereum_image:
+        description: 'Firehose Ethereum Docker image'
+        required: false
+        default: 'ghcr.io/streamingfast/firehose-ethereum:latest'
+  push:
+    tags:
+      - '*'
+    branches:
+      - release/*
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
+
+jobs:
+  push:
+    name: Docker build & push
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Delete files
+        shell: bash
+        run: |
+          # September 19th, 2025, this is still required to get enough space to build
+          df -h
+          sudo rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is 6.2G
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &  # 1 GiB in 15s
+          wait  # Wait for background deletions to complete
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract versions
+        id: extract-versions
+        run: |
+          version="edge-${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version=${GITHUB_REF#refs/tags/}
+          fi
+
+          docker pull "${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
+          fireeth_version=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
+
+          echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
+          echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
+          echo "FIREETH_DOCKER_SUFFIX=${version}-fireeth-${fireeth_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate docker tags/labels from github build context
+        id: meta-bare
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=
+            type=raw,value=${{ steps.extract-versions.outputs.VERSION }}
+            type=raw,value=${{ steps.extract-versions.outputs.VERSION }},suffix=${{ steps.extract-versions.outputs.FIREETH_DOCKER_SUFFIX }}
+            type=raw,enable=${{ github.ref == 'refs/heads/develop' }},value=develop
+
+      - name: Build and push nitro Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: nitro-node
+          file: ./Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
+          labels: ${{ steps.meta-bare.outputs.labels }}
+
+      - name: Build and push final (fireeth + nitro) Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.sf
+          push: true
+          build-args: |
+            NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
+            FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
+          tags: ${{ steps.meta-bare.outputs.tags }}
+          labels: ${{ steps.meta-bare.outputs.labels }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: push
+    runs-on: ubuntu-24.04
+    permissions:
+        contents: write
+
+    steps:
+      - name: Extract image
+        id: image
+        run: |
+          # The run is done only on tags, so we can ref/tags/ replace directly here
+          echo "ID=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract assets
+        run: |
+          # The --platform are not really needed here, but it removes the warning
+          docker cp $(docker create --platform=linux/amd64 ${{ steps.image.outputs.ID }}):/usr/local/bin/nitro ./nitro_linux_amd64
+
+      - name: Extract Changelog
+        id: changelog
+        run: |
+          curl -L https://github.com/streamingfast/sfreleaser/releases/download/v0.12.1/sfreleaser_linux_x86_64.tar.gz | tar -xz
+          chmod +x sfreleaser
+
+          ./sfreleaser changelog extract-section \
+            github://token:${{ github.token }}@${{ github.repository }}/$GITHUB_SHA/CHANGELOG.sf.md \
+            --github-output="changelog:$GITHUB_OUTPUT"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.changelog }}
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          files: |
+            ./nitro_linux_amd64
