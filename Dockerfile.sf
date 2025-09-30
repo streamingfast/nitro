@@ -1,0 +1,23 @@
+ARG NITRO_BASE_IMAGE=ghcr.io/streamingfast/nitro:nitro-v3.7.3-fh3.0-1
+ARG FIREHOSE_ETHEREUM_IMAGE=ghcr.io/streamingfast/firehose-ethereum:latest
+
+FROM ${FIREHOSE_ETHEREUM_IMAGE} AS firehose-ethereum
+
+FROM ${NITRO_BASE_IMAGE}
+
+USER root
+ENV PATH="$PATH:/app"
+
+RUN apt-get update && apt-get install -y ca-certificates htop iotop sysstat strace lsof curl jq tzdata file gettext-base && rm -rf /var/lib/apt/lists/*
+
+COPY --from=firehose-ethereum /app/fireeth /app/fireeth
+COPY --from=firehose-ethereum /app/grpc_health_probe /app/grpc_health_probe
+
+COPY --from=firehose-ethereum /etc/motd /etc/motd
+COPY --from=firehose-ethereum /etc/motd_reader /etc/motd_reader
+COPY --from=firehose-ethereum /etc/profile.d/99-firehose-ethereum.sh /etc/profile.d/
+COPY --from=firehose-ethereum /app/reader-* /app/
+
+RUN ls /app/reader-*
+RUN chmod +x /app/reader-*
+RUN echo ". /etc/profile.d/99-firehose-ethereum.sh" > /root/.bash_aliases
