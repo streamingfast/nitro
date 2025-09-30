@@ -32,7 +32,8 @@ func TransferBalance(
 	if amount.Sign() < 0 {
 		panic(fmt.Sprintf("Tried to transfer negative amount %v from %v to %v", amount, from, to))
 	}
-	if tracer := evm.Config.Tracer; tracer != nil {
+	firehoseCompat := evm.GetVMContext().ArbOSVersion <= 40 // these were not extracted in previous firehose versions
+	if tracer := evm.Config.Tracer; tracer != nil && !firehoseCompat {
 		if evm.Depth() != 0 && scenario != TracingDuringEVM {
 			// A non-zero depth implies this transfer is occurring inside EVM execution
 			log.Error("Tracing scenario mismatch", "scenario", scenario, "depth", evm.Depth())
