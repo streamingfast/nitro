@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       firehose_ethereum_image:
-        description: 'Firehose Ethereum Docker image'
+        description: "Firehose Ethereum Docker image"
         required: false
-        default: 'ghcr.io/streamingfast/firehose-ethereum:latest'
+        default: "ghcr.io/streamingfast/firehose-ethereum:latest"
   push:
     tags:
-      - '*'
+      - "*"
     branches:
       - release/*
 
@@ -34,7 +34,9 @@ jobs:
           # September 19th, 2025, this is still required to get enough space to build
           df -h
           sudo rm -rf /usr/local/lib/android/sdk/ndk* &  # NDK is 6.2G
-          sudo rm -rf /opt/hostedtoolcache/CodeQL &  # 1 GiB in 15s
+          sudo rm -rf /opt/hostedtoolcache &
+          cd /opt
+          find . -maxdepth 1 -mindepth 1 '!' -path ./containerd '!' -path ./actionarchivecache '!' -path ./runner '!' -path ./runner-cache -exec rm -rf '{}' ';' &
           wait  # Wait for background deletions to complete
           df -h
 
@@ -104,7 +106,7 @@ jobs:
     needs: push
     runs-on: ubuntu-24.04
     permissions:
-        contents: write
+      contents: write
 
     steps:
       - name: Extract image
