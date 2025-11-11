@@ -1,3 +1,7 @@
+## v3.8.0-fh3.0
+
+* Bumped to [3.8.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.8.0).
+
 ## v3.7.6-fh3.0
 
 * Bumped to [3.7.6](https://github.com/OffchainLabs/nitro/releases/tag/v3.7.6).
