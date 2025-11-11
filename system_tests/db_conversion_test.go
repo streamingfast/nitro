@@ -17,11 +17,10 @@ import (
 	"github.com/offchainlabs/nitro/util/arbmath"
 )
 
-func TestDatabaseConversion(t *testing.T) {
+func TestDatabaseConversionFlaky(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	builder := NewNodeBuilder(ctx).DefaultConfig(t, true).DontParalellise()
-	builder.useFreezer = false
 	builder.l2StackConfig.DBEngine = "leveldb"
 	builder.l2StackConfig.Name = "testl2"
 	// currently only HashScheme supports archive mode
@@ -63,6 +62,12 @@ func TestDatabaseConversion(t *testing.T) {
 		err = conv.Convert(ctx)
 		Require(t, err)
 	}
+	// move l2chaindata ancients to the destination directory
+	err = os.Rename(
+		path.Join(instanceDir, "l2chaindata_old", "ancient"),
+		path.Join(instanceDir, "l2chaindata", "ancient"),
+	)
+	Require(t, err)
 
 	builder.l2StackConfig.DBEngine = "pebble"
 	builder.nodeConfig.ParentChainReader.Enable = false
