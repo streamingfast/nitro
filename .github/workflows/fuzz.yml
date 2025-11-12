@@ -3,8 +3,6 @@ name: Fuzz Tests
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "36 2 * * 1,4"
 
 permissions:
   contents: write
