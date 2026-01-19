@@ -1,6 +1,6 @@
 module github.com/offchainlabs/nitro
 
-go 1.25
+go 1.25.0
 
 replace github.com/ethereum/go-ethereum => ./go-ethereum
 
@@ -49,7 +49,7 @@ require (
 	go.uber.org/automaxprocs v1.5.2
 	golang.org/x/crypto v0.36.0
 	golang.org/x/sync v0.12.0
-	golang.org/x/sys v0.36.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.30.0
 	golang.org/x/tools v0.29.0
 	google.golang.org/api v0.187.0
@@ -67,6 +67,7 @@ require (
 	github.com/crate-crypto/go-eth-kzg v1.4.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/emicklei/dot v1.6.2 // indirect
+	github.com/emmansun/base64 v0.8.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect
 	github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
@@ -87,7 +88,8 @@ require (
 	github.com/pion/stun/v2 v2.0.0 // indirect
 	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pion/transport/v3 v3.0.1 // indirect
-	github.com/streamingfast/firehose-ethereum/types v0.0.0-20250507011922-e3d3efeda61d // indirect
+	github.com/planetscale/vtprotobuf v0.6.0 // indirect
+	github.com/streamingfast/firehose-ethereum/types v0.0.0-20260119150111-65c739f81608 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
