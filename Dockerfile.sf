@@ -11,7 +11,6 @@ ENV PATH="$PATH:/app"
 RUN apt-get update && apt-get install -y ca-certificates htop iotop sysstat strace lsof curl jq tzdata file gettext-base && rm -rf /var/lib/apt/lists/*
 
 COPY --from=firehose-ethereum /app/fireeth /app/fireeth
-COPY --from=firehose-ethereum /app/grpc_health_probe /app/grpc_health_probe
 
 COPY --from=firehose-ethereum /etc/motd /etc/motd
 COPY --from=firehose-ethereum /etc/motd_reader /etc/motd_reader
