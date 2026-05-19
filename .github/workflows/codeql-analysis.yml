@@ -11,6 +11,8 @@ on:
 jobs:
   analyze:
     if: false # disabled (was: github.repository == 'OffchainLabs/nitro')
+    name: Analyze
+    runs-on: arbitrator-ci
     permissions:
       actions: read
       contents: read
