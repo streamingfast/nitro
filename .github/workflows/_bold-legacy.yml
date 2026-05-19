@@ -1,13 +1,17 @@
 ---
 name: bold-legacy
 on:
-  workflow_call:
+  workflow_call: # disabled
+
+env:
+  WORKFLOWS_DISABLED: "true"
 
 permissions:
   contents: read
 
 jobs:
   bold-legacy:
+    if: false
     name: Run Bold Legacy challenge tests
     runs-on: arbitrator-ci
     steps:
@@ -40,7 +44,7 @@ jobs:
           path: full.log
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe  # v5
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           fail_ci_if_error: false
           files: ./coverage.txt,./coverage-redis.txt

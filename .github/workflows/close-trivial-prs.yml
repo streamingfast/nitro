@@ -2,8 +2,7 @@
 name: Close trivial PRs
 
 on:
-  pull_request_target:
-    types: [labeled]
+  workflow_dispatch: # disabled - was: pull_request_target types: [labeled]
 
 jobs:
   close-trivial-pr:

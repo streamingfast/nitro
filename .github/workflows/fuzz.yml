@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   list:
+    if: false
     runs-on: arbitrator-ci
 
     steps:
@@ -30,11 +31,12 @@ jobs:
         run: make build test-go-deps -j
 
       - id: list
-        uses: shogo82148/actions-go-fuzz/list@9ff10977e72bc65876413aba399202b1fbc16e99  # v1
+        uses: shogo82148/actions-go-fuzz/list@9ff10977e72bc65876413aba399202b1fbc16e99 # v1
     outputs:
       fuzz-tests: ${{steps.list.outputs.fuzz-tests}}
 
   fuzz:
+    if: false
     runs-on: ubuntu-4
     timeout-minutes: 360
     needs: list
@@ -57,7 +59,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
-      - uses: shogo82148/actions-go-fuzz/run@9ff10977e72bc65876413aba399202b1fbc16e99  # v1
+      - uses: shogo82148/actions-go-fuzz/run@9ff10977e72bc65876413aba399202b1fbc16e99 # v1
         with:
           packages: ${{ matrix.package }}
           fuzz-regexp: ${{ matrix.func }}

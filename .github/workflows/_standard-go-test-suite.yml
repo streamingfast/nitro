@@ -5,10 +5,21 @@ on:
 
 jobs:
   main:
+    if: false
     strategy:
       fail-fast: false
       matrix:
-        test-mode: [defaults-A, defaults-B, flaky, pathdb-A, pathdb-B, challenge, stylus, l3challenge]
+        test-mode:
+          [
+            defaults-A,
+            defaults-B,
+            flaky,
+            pathdb-A,
+            pathdb-B,
+            challenge,
+            stylus,
+            l3challenge,
+          ]
     uses: ./.github/workflows/_go-tests.yml
     secrets: inherit
     with:

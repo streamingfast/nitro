@@ -1,9 +1,7 @@
 name: Update license headers
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 1 * *' # At 00:00 on the 1st day of every month
+  workflow_dispatch: # disabled - was: workflow_dispatch, schedule (cron: '0 0 1 * *')
 
 jobs:
   update-licenses:
@@ -49,5 +47,5 @@ jobs:
           token: ${{ secrets.CHANGELOG_PUSH_TOKEN }}
           body: |
             Automated license header update.
-            
+
             This PR was triggered by a scheduled task to ensure source files have the correct copyright years based on Git history.

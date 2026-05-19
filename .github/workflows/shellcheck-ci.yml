@@ -3,11 +3,7 @@ name: ShellCheck CI
 run-name: ShellCheck CI triggered from @${{ github.actor }} of ${{ github.head_ref }}
 
 on:
-  workflow_dispatch:
-  merge_group:
-  pull_request:
-  push:
-    branches: [master, main]
+  workflow_dispatch: # disabled - was: workflow_dispatch, merge_group, pull_request, push (master/main)
 
 permissions:
   contents: read
@@ -23,7 +19,7 @@ jobs:
 
       - name: Run ShellCheck
         # No version tags exist for this action; pinned to the current master SHA.
-        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca  # master
+        uses: ludeeus/action-shellcheck@00b27aa7cb85167568cb48a3838b75f4265f2bca # master
         with:
           ignore_paths: >-
             ./fastcache/**

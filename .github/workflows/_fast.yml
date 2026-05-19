@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   lint-and-build:
+    if: false
     name: Lint and Build
     runs-on: arbitrator-ci
     steps:

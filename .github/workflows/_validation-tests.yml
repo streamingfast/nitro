@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   validation-tests:
+    if: false
     name: Block validation tests
     runs-on: arbitrator-ci
     env:

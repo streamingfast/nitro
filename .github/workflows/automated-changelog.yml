@@ -1,8 +1,7 @@
 name: Changelog fragments for automated PRs
 
 on:
-  pull_request:
-    types: [opened]
+  workflow_dispatch: # disabled - was: pull_request types: [opened]
 
 jobs:
   add-changelog:
@@ -24,9 +23,9 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            
+
             const dir = 'changelog';
-            
+
             const prNumber = context.payload.pull_request.number;
             const filename = path.join(dir, `dependabot-${prNumber}.md`);
 
@@ -40,4 +39,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Add a changelog entry for dependabot update"
-          file_pattern: 'changelog/dependabot-*.md'
+          file_pattern: "changelog/dependabot-*.md"

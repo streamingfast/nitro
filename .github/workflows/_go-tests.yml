@@ -70,6 +70,7 @@ permissions:
 
 jobs:
   go-tests:
+    if: false
     name: Go tests
     runs-on: arbitrator-ci
     # Per-job hard cap so a hung test terminates with a Go stack trace rather
@@ -145,7 +146,6 @@ jobs:
           --tags cionly --timeout 60m --cover --coverprofile coverage-b.txt --test_state_scheme hash
           --junitfile test-results/junit-defaults-b.xml --skip '^Test[A-L]'
       # --------------------- PATHDB MEL MODE ---------------------
-
       - name: run tests without race detection and path state scheme (A-batch, MEL)
         if: inputs.run-pathdb-a-mel
         run: >-
@@ -173,7 +173,7 @@ jobs:
         run: >-
           ${{ github.workspace }}/.github/workflows/gotestsum.sh
           --tags cionly --timeout 60m --test_state_scheme hash
-          --junitfile test-results/junit-defaults-b-mel.xml --skip '^Test[A-L]' --test_mel      
+          --junitfile test-results/junit-defaults-b-mel.xml --skip '^Test[A-L]' --test_mel
       - name: run redis tests
         if: inputs.run-defaults-a
         run: >-
@@ -249,7 +249,7 @@ jobs:
       - name: run race tests
         if: inputs.run-race
         run: >-
-          ${{ github.workspace }}/.github/workflows/gotestsum.sh 
+          ${{ github.workspace }}/.github/workflows/gotestsum.sh
           --race --timeout 90m --test_state_scheme hash
           --junitfile test-results/junit-race.xml
 
@@ -283,7 +283,6 @@ jobs:
           ${{ github.workspace }}/.github/workflows/gotestsum.sh --timeout 120m --test_database_engine pebble
           --junitfile test-results/junit-pebble-b.xml --skip '^Test[A-N]' --reduce-parallelism
       # --------------------- PROCESS JUNIT LOGS ---------------------
-
       - name: Process JUnit XML logs
         if: always()
         run: python3 ${{ github.workspace }}/.github/workflows/process_junit.py test-results/

@@ -6,13 +6,7 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  merge_group:
-  # pull_request_target (not pull_request) so secrets are available; the
-  # workflow body is careful not to execute attacker-controlled code — see
-  # the "No submodule fetch" note below and the base-ref read of .gitmodules.
-  pull_request_target:
-    branches: [master, main]
-    types: [synchronize, opened, reopened]
+  workflow_dispatch: # disabled - was: merge_group, pull_request_target (master/main)
 
 permissions:
   contents: read

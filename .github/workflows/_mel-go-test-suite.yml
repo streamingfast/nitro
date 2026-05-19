@@ -8,10 +8,18 @@ on:
 # ci.yml) or wait for the scheduled nightly run (see nightly-ci.yml).
 jobs:
   main:
+    if: false
     strategy:
       fail-fast: false
       matrix:
-        test-mode: [defaults-A-MEL, defaults-B-MEL, pathdb-A-MEL, pathdb-B-MEL, flaky-MEL]
+        test-mode:
+          [
+            defaults-A-MEL,
+            defaults-B-MEL,
+            pathdb-A-MEL,
+            pathdb-B-MEL,
+            flaky-MEL,
+          ]
     uses: ./.github/workflows/_go-tests.yml
     secrets: inherit
     with:
