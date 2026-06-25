@@ -16,11 +16,11 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/offchainlabs/nitro/bold/containers"
-	"github.com/offchainlabs/nitro/bold/containers/option"
 	"github.com/offchainlabs/nitro/bold/protocol"
 	"github.com/offchainlabs/nitro/bold/protocol/sol"
 	"github.com/offchainlabs/nitro/bold/state"
 	"github.com/offchainlabs/nitro/util"
+	util_containers "github.com/offchainlabs/nitro/util/containers"
 )
 
 var (
@@ -28,6 +28,8 @@ var (
 	errorPostingAssertionCounter = metrics.NewRegisteredCounter("arb/validator/poster/error_posting_assertion", nil)
 	chainCatchingUpCounter       = metrics.NewRegisteredCounter("arb/validator/poster/chain_catching_up", nil)
 )
+
+var errAssertionNotYetFinalized = errors.New("assertion visible at latest but not yet at configured RPC head")
 
 func (m *Manager) postAssertionRoutine(ctx context.Context) {
 	if !m.mode.SupportsStaking() {
@@ -48,6 +50,9 @@ func (m *Manager) postAssertionRoutine(ctx context.Context) {
 			case errors.Is(err, sol.ErrAlreadyExists):
 			case errors.Is(err, sol.ErrBatchNotYetFound):
 				log.Info("Waiting for more batches to post assertions about them onchain")
+			case errors.Is(err, errAssertionNotYetFinalized):
+				log.Debug("Posted assertion not yet visible at configured RPC head; "+
+					"will advance cursor once it finalizes", "err", err)
 			default:
 				logLevel := log.Error
 				logLevel = exceedsMaxMempoolSizeEphemeralErrorHandler.LogLevel(err, logLevel)
@@ -86,17 +91,17 @@ func (m *Manager) awaitPostingSignal(ctx context.Context) {
 	}
 }
 
-// recordAgreedAssertion adds an assertion we agree with to canonicalAssertions
-// and, if it's a direct child of latestAgreedAssertion, advances the cursor to
-// it. The conditional advance prevents the slow catchup goroutine from
-// downgrading latestAgreedAssertion after sync has already moved past — a
-// downgrade would cause subsequent sync chunks to skip agreement checks and
-// fire the rival path against our own canonical assertions. Parent-hash
-// equality (not InboxMaxCount comparison) is required because overflow
-// assertions share InboxMaxCount with their parent.
+// recordAgreedAssertion reads at the configured RPC head so cached data is
+// reorg-safe, then applies it. Returns errAssertionNotYetFinalized when the
+// assertion is visible only at latest.
 func (m *Manager) recordAgreedAssertion(ctx context.Context, assertionId protocol.AssertionHash) error {
 	creationInfo, err := m.chain.ReadAssertionCreationInfo(ctx, assertionId)
 	if err != nil {
+		if ctx.Err() == nil {
+			if _, latestErr := m.chain.ReadAssertionCreationInfoAtLatest(ctx, assertionId); latestErr == nil {
+				return fmt.Errorf("%w: assertion %#x", errAssertionNotYetFinalized, assertionId.Hash)
+			}
+		}
 		return fmt.Errorf("could not read creation info for assertion %#x: %w", assertionId.Hash, err)
 	}
 	m.applyRecordAgreedAssertion(creationInfo)
@@ -132,11 +137,11 @@ func (m *Manager) applyRecordAgreedAssertion(creationInfo *protocol.AssertionCre
 // PostAssertion differs depending on whether or not the validator is currently staked.
 // It advances through any assertions that already exist onchain before attempting
 // to post a genuinely new one, ensuring the chain tracking stays up to date.
-func (m *Manager) PostAssertion(ctx context.Context) (option.Option[protocol.Assertion], error) {
+func (m *Manager) PostAssertion(ctx context.Context) (util_containers.Option[protocol.Assertion], error) {
 	if !m.isReadyToPost {
 		m.awaitPostingSignal(ctx)
 	}
-	none := option.None[protocol.Assertion]()
+	none := util_containers.None[protocol.Assertion]()
 
 	staked, err := m.chain.IsStaked(ctx)
 	if err != nil {
@@ -159,7 +164,7 @@ func (m *Manager) PostAssertion(ctx context.Context) (option.Option[protocol.Ass
 		}
 
 		// If the validator is already staked, we post an assertion and move existing stake to it.
-		var assertionOpt option.Option[protocol.Assertion]
+		var assertionOpt util_containers.Option[protocol.Assertion]
 		var postErr error
 		if staked {
 			assertionOpt, postErr = m.PostAssertionBasedOnParent(
@@ -211,8 +216,8 @@ func (m *Manager) PostAssertionBasedOnParent(
 		parentCreationInfo *protocol.AssertionCreatedInfo,
 		newState *protocol.ExecutionState,
 	) (protocol.Assertion, error),
-) (option.Option[protocol.Assertion], error) {
-	none := option.None[protocol.Assertion]()
+) (util_containers.Option[protocol.Assertion], error) {
+	none := util_containers.None[protocol.Assertion]()
 	if !parentCreationInfo.InboxMaxCount.IsUint64() {
 		return none, errors.New("inbox max count not a uint64")
 	}
@@ -261,7 +266,7 @@ func (m *Manager) PostAssertionBasedOnParent(
 		if errors.Is(err, sol.ErrAlreadyExists) {
 			// The assertion already exists on-chain. Return it with the error
 			// so the caller can advance the chain pointer.
-			return option.Some(assertion), err
+			return util_containers.Some(assertion), err
 		}
 		return none, err
 	}
@@ -274,7 +279,7 @@ func (m *Manager) PostAssertionBasedOnParent(
 	)
 
 	m.sendToConfirmationQueue(assertion.Id(), "PostAssertionBasedOnParent")
-	return option.Some(assertion), nil
+	return util_containers.Some(assertion), nil
 }
 
 func (m *Manager) waitToPostIfNeeded(
