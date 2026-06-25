@@ -1,3 +1,9 @@
+## v3.11.0-fh3.0
+
+* Bumped to [3.11.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.0).
+    * Also contains [3.10.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.10.0) and [3.10.1](https://github.com/OffchainLabs/nitro/releases/tag/v3.10.1).
+* Updated `go-ethereum` to [arbitrum-v3.11.0-fh-1](https://github.com/streamingfast/go-ethereum/tree/arbitrum-v3.11.0-fh-1).
+
 ## v3.9.3-fh3.0
 
 * Bumped to [3.9.3](https://github.com/OffchainLabs/nitro/releases/tag/v3.9.3).
