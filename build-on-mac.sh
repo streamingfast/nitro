@@ -60,60 +60,81 @@ if [ "${#missing[@]}" -gt 0 ]; then
 fi
 
 # --- 2. determine required Go version ---------------------------------------
-GO_MM="$(awk '/^go [0-9]+\.[0-9]+/ {print $2; exit}' go.mod)"   # e.g. 1.20
-[ -n "$GO_MM" ] || die "could not read 'go' directive from go.mod"
+# go.mod may say "go 1.20" or "go 1.25.0"; reduce to major.minor.
+GO_DIRECTIVE="$(awk '/^go [0-9]+\.[0-9]+/ {print $2; exit}' go.mod)"
+[ -n "$GO_DIRECTIVE" ] || die "could not read 'go' directive from go.mod"
+GO_MM="$(printf '%s' "$GO_DIRECTIVE" | cut -d. -f1,2)"   # e.g. 1.20 / 1.25
 
-# Pinned patch release. Default tracks the go.mod minor; override via env.
+# Pinned patch release used only when we must download. Override via env.
 case "$GO_MM" in
   1.20) DEFAULT_PATCH=1.20.14 ;;
   1.21) DEFAULT_PATCH=1.21.13 ;;
   1.22) DEFAULT_PATCH=1.22.12 ;;
   1.23) DEFAULT_PATCH=1.23.12 ;;
+  1.24) DEFAULT_PATCH=1.24.10 ;;
+  1.25) DEFAULT_PATCH=1.25.9 ;;
   *)    DEFAULT_PATCH="${GO_MM}.0" ;;
 esac
 GO_VERSION="${GO_VERSION:-$DEFAULT_PATCH}"
 
-info "go.mod requires Go $GO_MM — will build with Go $GO_VERSION (darwin-$GOARCH)"
-ask "proceed with Go $GO_VERSION?" || die "aborted by user"
+info "go.mod requires Go $GO_MM (darwin-$GOARCH)"
 
-# --- 3. ensure the toolchain is available ----------------------------------
-SDK_DIR="$HOME/sdk/go${GO_VERSION}"
-GO_BIN="$SDK_DIR/bin/go"
-
-if [ -x "$GO_BIN" ]; then
-  info "found existing toolchain at $SDK_DIR"
-else
-  TARBALL="go${GO_VERSION}.darwin-${GOARCH}.tar.gz"
-  URL="https://go.dev/dl/${TARBALL}"
-  info "Go $GO_VERSION not installed."
-  ask "download $URL into ~/sdk?" || die "aborted: cannot build without Go $GO_VERSION"
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
-  info "downloading $URL ..."
-  curl -fL --progress-bar "$URL" -o "$tmp/$TARBALL" || die "download failed"
-  info "extracting to $SDK_DIR ..."
-  mkdir -p "$SDK_DIR"
-  tar -C "$tmp" -xzf "$tmp/$TARBALL"
-  # tarball unpacks to ./go ; move its contents into SDK_DIR
-  rm -rf "$SDK_DIR"
-  mv "$tmp/go" "$SDK_DIR"
-  [ -x "$GO_BIN" ] || die "extraction did not produce $GO_BIN"
+# --- 3. pick a Go toolchain -------------------------------------------------
+# Prefer a system Go whose major.minor matches go.mod exactly — any patch of
+# the same minor builds the module cleanly. Only download a pinned toolchain
+# when the system Go's minor differs (too old, or too new like 1.25 vs a
+# go.mod that still pins 1.20, which a modern Go refuses to build).
+GO_DIR=""
+SYS_GO="$(command -v go || true)"
+if [ -n "$SYS_GO" ]; then
+  SYS_VER="$("$SYS_GO" version | awk '{print $3}' | sed 's/^go//')"   # 1.25.9
+  SYS_MM="$(printf '%s' "$SYS_VER" | cut -d. -f1,2)"
+  if [ "$SYS_MM" = "$GO_MM" ]; then
+    info "system Go $SYS_VER matches go.mod ($GO_MM) — using it, no download"
+    GO_DIR="$(dirname "$SYS_GO")"
+  else
+    warn "system Go is $SYS_VER but go.mod needs $GO_MM.x — will use a pinned toolchain"
+  fi
 fi
 
-GOT_VER="$("$GO_BIN" version | awk '{print $3}')"   # e.g. go1.20.14
-info "using $GOT_VER"
-[ "$GOT_VER" = "go${GO_VERSION}" ] || warn "version mismatch: wanted go${GO_VERSION}, got $GOT_VER"
+if [ -z "$GO_DIR" ]; then
+  SDK_DIR="$HOME/sdk/go${GO_VERSION}"
+  GO_BIN="$SDK_DIR/bin/go"
+  if [ -x "$GO_BIN" ]; then
+    info "found pinned toolchain at $SDK_DIR"
+  else
+    TARBALL="go${GO_VERSION}.darwin-${GOARCH}.tar.gz"
+    URL="https://go.dev/dl/${TARBALL}"
+    info "Go $GO_VERSION not installed."
+    ask "download $URL into ~/sdk?" || die "aborted: cannot build without Go $GO_MM.x"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    info "downloading $URL ..."
+    curl -fL --progress-bar "$URL" -o "$tmp/$TARBALL" || die "download failed"
+    info "extracting to $SDK_DIR ..."
+    tar -C "$tmp" -xzf "$tmp/$TARBALL"
+    rm -rf "$SDK_DIR"; mkdir -p "$(dirname "$SDK_DIR")"
+    mv "$tmp/go" "$SDK_DIR"   # tarball unpacks to ./go
+    [ -x "$GO_BIN" ] || die "extraction did not produce $GO_BIN"
+  fi
+  GO_DIR="$SDK_DIR/bin"
+fi
+
+info "using $("$GO_DIR/go" version | awk '{print $3}')"
 
 # --- 4. ensure foundry lint-on-build is disabled (submodule guard) ---------
-FOUNDRY_TOML="contracts/foundry.toml"
-if [ -f "$FOUNDRY_TOML" ] && ! grep -q "lint_on_build" "$FOUNDRY_TOML"; then
-  info "disabling foundry solar lint in $FOUNDRY_TOML"
-  printf '\n[lint]\nlint_on_build = false\n' >> "$FOUNDRY_TOML"
-fi
+# forge's solar linter rejects Yul `object {}` and breaks `make build`.
+# `git submodule update` resets these files, so re-apply idempotently.
+for FOUNDRY_TOML in contracts/foundry.toml contracts-legacy/foundry.toml; do
+  if [ -f "$FOUNDRY_TOML" ] && ! grep -q "lint_on_build" "$FOUNDRY_TOML"; then
+    info "disabling foundry solar lint in $FOUNDRY_TOML"
+    printf '\n[lint]\nlint_on_build = false\n' >> "$FOUNDRY_TOML"
+  fi
+done
 
 # --- 5. build ---------------------------------------------------------------
 # GOTOOLCHAIN=local pins the on-PATH Go so it does not try to switch versions.
-export PATH="$SDK_DIR/bin:$PATH"
+export PATH="$GO_DIR:$PATH"
 export GOTOOLCHAIN=local
 
 info "running: make build"
@@ -125,7 +146,7 @@ if [ -x target/bin/nitro ]; then
   target/bin/nitro --version || true
   echo
   info "binaries in: $REPO_ROOT/target/bin"
-  warn "to rebuild manually: PATH=\"$SDK_DIR/bin:\$PATH\" GOTOOLCHAIN=local make build"
+  warn "to rebuild manually: PATH=\"$GO_DIR:\$PATH\" GOTOOLCHAIN=local make build"
 else
   die "build finished but target/bin/nitro is missing"
 fi
