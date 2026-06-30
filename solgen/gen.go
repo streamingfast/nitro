@@ -147,6 +147,9 @@ func main() {
 		modules["yulgen"] = yulModInfo
 	}
 	for _, path := range yulFilePaths {
+		if strings.Contains(path, "build-info") {
+			continue
+		}
 		_, file := filepath.Split(path)
 		name := file[:len(file)-5]
 
