@@ -2,8 +2,7 @@
 
 * Bumped to [3.11.2](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.2).
     * Also contains [3.11.1](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.1).
-* Updated `go-ethereum` to [arbitrum-v3.11.2-fh](https://github.com/streamingfast/go-ethereum/tree/arbitrum-v3.11.2-fh).
-    * Firehose tracer now ignores nitro's new `TxProcessor.emitSkippedCallFrame` (v3.11.2) re-entry over an already-simulated arbitrum root call (deposit / submit-retryable / internal), avoiding a duplicated nested root call on EVM-skipped transactions.
+* `go-ethereum` unchanged at [arbitrum-v3.11.1-fh-2](https://github.com/streamingfast/go-ethereum/tree/arbitrum-v3.11.1-fh-2): upstream nitro keeps the same go-ethereum revision between v3.11.1 and v3.11.2, and no firehose change is required.
 
 ## v3.11.0-fh3.0
 
