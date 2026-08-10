@@ -8,6 +8,14 @@ on:
         description: "Firehose Ethereum Docker image"
         required: false
         default: "ghcr.io/streamingfast/firehose-ethereum:latest"
+      platform:
+        description: "Target platform for image builds"
+        required: false
+        default: "linux/arm64"
+        type: choice
+        options:
+          - linux/arm64
+          - linux/arm
   push:
     tags:
       - "*"
@@ -18,6 +26,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
+  TARGET_PLATFORM: ${{ inputs.platform || 'linux/arm64' }}
 
 jobs:
   push:
@@ -95,6 +104,7 @@ jobs:
           target: nitro-node
           file: ./Dockerfile
           push: false
+          platforms: ${{ env.TARGET_PLATFORM }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
           labels: ${{ steps.meta-bare.outputs.labels }}
 
@@ -104,6 +114,7 @@ jobs:
           context: .
           file: ./Dockerfile.sf
           push: true
+          platforms: ${{ env.TARGET_PLATFORM }}
           build-args: |
             NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
             FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
@@ -125,9 +136,15 @@ jobs:
           echo "ID=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Extract assets
+        id: assets
         run: |
-          # The --platform are not really needed here, but it removes the warning
-          docker cp $(docker create --platform=linux/amd64 ${{ steps.image.outputs.ID }}):/usr/local/bin/nitro ./nitro_linux_amd64
+          suffix=arm64
+          if [ "${TARGET_PLATFORM}" = "linux/arm" ]; then
+            suffix=arm
+          fi
+          asset="./nitro_linux_${suffix}"
+          docker cp $(docker create --platform=${TARGET_PLATFORM} ${{ steps.image.outputs.ID }}):/usr/local/bin/nitro "$asset"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
 
       - name: Extract Changelog
         id: changelog
@@ -145,4 +162,4 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
           files: |
-            ./nitro_linux_amd64
+            ${{ steps.assets.outputs.asset }}

@@ -364,8 +364,8 @@ endef
 docker:
 	@$(resolve_gh_token_and_secret); \
 	for t in nitro-node-slim nitro-node nitro-node-dev; do \
-		echo "+ docker build $$SECRET -t $$t --target $$t ."; \
-		docker build $$SECRET -t "$$t" --target "$$t" . || exit 1; \
+		echo "+ docker build $$SECRET --platform $(ARCH) -t $$t --target $$t ."; \
+		docker build $$SECRET --platform "$(ARCH)" -t "$$t" --target "$$t" . || exit 1; \
 	done
 
 .PHONY: docker-machine-versions ## Build Docker image for machine versions.
@@ -762,3 +762,5 @@ contracts/test/prover/proofs/%.json: $(arbitrator_cases)/%.wasm $(prover_bin)
 
 always:              # use this to force other rules to always build
 .DELETE_ON_ERROR:    # causes a failure to delete its target
+
+ARCH ?= linux/arm64
