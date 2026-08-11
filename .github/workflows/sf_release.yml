@@ -138,13 +138,12 @@ jobs:
       - name: Extract assets
         id: assets
         run: |
-          suffix=arm64
-          if [ "${TARGET_PLATFORM}" = "linux/arm" ]; then
-            suffix=arm
-          fi
-          asset="./nitro_linux_${suffix}"
-          docker cp $(docker create --platform=${TARGET_PLATFORM} ${{ steps.image.outputs.ID }}):/usr/local/bin/nitro "$asset"
-          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          # linux/arm64 -> nitro_linux_arm64, linux/arm -> nitro_linux_arm
+          asset="nitro_${TARGET_PLATFORM/\//_}"
+          container=$(docker create --platform="$TARGET_PLATFORM" "${{ steps.image.outputs.ID }}")
+          docker cp "$container:/usr/local/bin/nitro" "./$asset"
+          docker rm "$container"
+          echo "asset=./$asset" >> "$GITHUB_OUTPUT"
 
       - name: Extract Changelog
         id: changelog
