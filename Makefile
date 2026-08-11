@@ -763,4 +763,4 @@ contracts/test/prover/proofs/%.json: $(arbitrator_cases)/%.wasm $(prover_bin)
 always:              # use this to force other rules to always build
 .DELETE_ON_ERROR:    # causes a failure to delete its target
 
-ARCH ?= linux/arm64
+ARCH ?= linux/amd64
