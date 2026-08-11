@@ -140,9 +140,7 @@ jobs:
         run: |
           # linux/arm64 -> nitro_linux_arm64, linux/arm -> nitro_linux_arm
           asset="nitro_${TARGET_PLATFORM/\//_}"
-          container=$(docker create --platform="$TARGET_PLATFORM" "${{ steps.image.outputs.ID }}")
-          docker cp "$container:/usr/local/bin/nitro" "./$asset"
-          docker rm "$container"
+          docker cp "$(docker create --platform="$TARGET_PLATFORM" "${{ steps.image.outputs.ID }}"):/usr/local/bin/nitro" "./$asset"
           echo "asset=./$asset" >> "$GITHUB_OUTPUT"
 
       - name: Extract Changelog
