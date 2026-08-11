@@ -8,14 +8,6 @@ on:
         description: "Firehose Ethereum Docker image"
         required: false
         default: "ghcr.io/streamingfast/firehose-ethereum:latest"
-      platform:
-        description: "Target platform for image builds"
-        required: false
-        default: "linux/arm64"
-        type: choice
-        options:
-          - linux/arm64
-          - linux/arm
   push:
     tags:
       - "*"
@@ -26,12 +18,42 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
-  TARGET_PLATFORM: ${{ inputs.platform || 'linux/arm64' }}
 
 jobs:
-  push:
-    name: Docker build & push
+  prepare:
+    name: Resolve versions
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.extract-versions.outputs.VERSION }}
+      fireeth_docker_suffix: ${{ steps.extract-versions.outputs.FIREETH_DOCKER_SUFFIX }}
+    steps:
+      - name: Extract versions
+        id: extract-versions
+        run: |
+          version="edge-${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            version=${GITHUB_REF#refs/tags/}
+          fi
+
+          docker pull "${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
+          fireeth_version=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
+
+          echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
+          echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
+          echo "FIREETH_DOCKER_SUFFIX=${version}-fireeth-${fireeth_version}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build & push (${{ matrix.arch }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
@@ -70,22 +92,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract versions
-        id: extract-versions
-        run: |
-          version="edge-${GITHUB_SHA::7}"
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            version=${GITHUB_REF#refs/tags/}
-          fi
+      - name: Generate docker labels from github build context
+        id: meta-bare
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-          docker pull "${{ env.FIREHOSE_ETHEREUM_IMAGE }}"
-          fireeth_version=$(docker inspect "${{ env.FIREHOSE_ETHEREUM_IMAGE }}" --format='{{index .Config.Labels "org.opencontainers.image.version"}}')
+      - name: Build nitro Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: nitro-node
+          file: ./Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ needs.prepare.outputs.version }}
+          labels: ${{ steps.meta-bare.outputs.labels }}
 
-          echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
-          echo "FIREETH_VERSION=${fireeth_version}" >> "$GITHUB_OUTPUT"
-          echo "FIREETH_DOCKER_SUFFIX=${version}-fireeth-${fireeth_version}" >> "$GITHUB_OUTPUT"
+      - name: Build and push final (fireeth + nitro) per-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.sf
+          push: true
+          build-args: |
+            NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ needs.prepare.outputs.version }}
+            FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}-${{ matrix.arch }}
+          labels: ${{ steps.meta-bare.outputs.labels }}
 
-      - name: Generate docker tags/labels from github build context
+  manifest:
+    name: Create multi-arch manifests
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate docker tags from github build context
         id: meta-bare
         uses: docker/metadata-action@v5
         with:
@@ -93,55 +144,46 @@ jobs:
           tags: |
             type=ref,event=tag
             type=sha,prefix=
-            type=raw,value=${{ steps.extract-versions.outputs.VERSION }}
-            type=raw,value=${{ steps.extract-versions.outputs.VERSION }},suffix=${{ steps.extract-versions.outputs.FIREETH_DOCKER_SUFFIX }}
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=${{ needs.prepare.outputs.version }},suffix=${{ needs.prepare.outputs.fireeth_docker_suffix }}
             type=raw,enable=${{ github.ref == 'refs/heads/develop' }},value=develop
 
-      - name: Build and push nitro Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: nitro-node
-          file: ./Dockerfile
-          push: false
-          platforms: ${{ env.TARGET_PLATFORM }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
-          labels: ${{ steps.meta-bare.outputs.labels }}
-
-      - name: Build and push final (fireeth + nitro) Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.sf
-          push: true
-          platforms: ${{ env.TARGET_PLATFORM }}
-          build-args: |
-            NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ steps.extract-versions.outputs.VERSION }}
-            FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
-          tags: ${{ steps.meta-bare.outputs.tags }}
-          labels: ${{ steps.meta-bare.outputs.labels }}
+      - name: Create and push manifests
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAGS: ${{ steps.meta-bare.outputs.tags }}
+        run: |
+          src_prefix="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker buildx imagetools create -t "$tag" \
+              "${src_prefix}-amd64" "${src_prefix}-arm64"
+          done <<< "$TAGS"
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: push
+    needs: [prepare, manifest]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      packages: read
 
     steps:
-      - name: Extract image
-        id: image
-        run: |
-          # The run is done only on tags, so we can ref/tags/ replace directly here
-          echo "ID=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract assets
-        id: assets
+      - name: Extract binaries
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          # linux/arm64 -> nitro_linux_arm64, linux/arm -> nitro_linux_arm
-          asset="nitro_${TARGET_PLATFORM/\//_}"
-          docker cp "$(docker create --platform="$TARGET_PLATFORM" "${{ steps.image.outputs.ID }}"):/usr/local/bin/nitro" "./$asset"
-          echo "asset=./$asset" >> "$GITHUB_OUTPUT"
+          for arch in amd64 arm64; do
+            src="${REGISTRY}/${IMAGE_NAME}:${VERSION}-${arch}"
+            docker cp "$(docker create "$src"):/usr/local/bin/nitro" "./nitro_linux_${arch}"
+          done
 
       - name: Extract Changelog
         id: changelog
@@ -159,4 +201,5 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
           files: |
-            ${{ steps.assets.outputs.asset }}
+            ./nitro_linux_amd64
+            ./nitro_linux_arm64
