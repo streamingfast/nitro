@@ -16,7 +16,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
 
 jobs:
@@ -26,7 +25,14 @@ jobs:
     outputs:
       version: ${{ steps.extract-versions.outputs.VERSION }}
       fireeth_docker_suffix: ${{ steps.extract-versions.outputs.FIREETH_DOCKER_SUFFIX }}
+      image_name: ${{ steps.image.outputs.name }}
     steps:
+      - name: Lowercase image name
+        id: image
+        # Container registries require lowercase repository names; github.repository
+        # preserves the org's original casing, so normalize it here.
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: Extract versions
         id: extract-versions
         run: |
@@ -96,7 +102,7 @@ jobs:
         id: meta-bare
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}
 
       - name: Build nitro Docker image
         uses: docker/build-push-action@v6
@@ -105,7 +111,7 @@ jobs:
           target: nitro-node
           file: ./Dockerfile
           push: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ needs.prepare.outputs.version }}
+          tags: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}-base:${{ needs.prepare.outputs.version }}
           labels: ${{ steps.meta-bare.outputs.labels }}
 
       - name: Build and push final (fireeth + nitro) per-arch image
@@ -115,9 +121,9 @@ jobs:
           file: ./Dockerfile.sf
           push: true
           build-args: |
-            NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base:${{ needs.prepare.outputs.version }}
+            NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}-base:${{ needs.prepare.outputs.version }}
             FIREHOSE_ETHEREUM_IMAGE=${{ env.FIREHOSE_ETHEREUM_IMAGE }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}-${{ matrix.arch }}
+          tags: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}:${{ needs.prepare.outputs.version }}-${{ matrix.arch }}
           labels: ${{ steps.meta-bare.outputs.labels }}
 
   manifest:
@@ -140,7 +146,7 @@ jobs:
         id: meta-bare
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}
           tags: |
             type=ref,event=tag
             type=sha,prefix=
@@ -150,6 +156,7 @@ jobs:
 
       - name: Create and push manifests
         env:
+          IMAGE_NAME: ${{ needs.prepare.outputs.image_name }}
           VERSION: ${{ needs.prepare.outputs.version }}
           TAGS: ${{ steps.meta-bare.outputs.tags }}
         run: |
@@ -178,6 +185,7 @@ jobs:
 
       - name: Extract binaries
         env:
+          IMAGE_NAME: ${{ needs.prepare.outputs.image_name }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           for arch in amd64 arm64; do
