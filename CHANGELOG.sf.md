@@ -1,3 +1,10 @@
+## Unreleased
+
+* Added `linux/arm64` support: the published Docker image is now a multi-arch manifest covering `linux/amd64` and `linux/arm64`, and releases ship a `nitro_linux_arm64` binary alongside `nitro_linux_amd64`.
+* Changed the Firehose Ethereum base image to be pinned by digest for the whole build, so both architectures in a manifest are guaranteed to embed the same `firehose-ethereum` build.
+* Removed the `<version>-fireeth-<fireeth version>` image tag. Releases are identified by their version alone, e.g. `v3.11.2-fh3.0`.
+* Fixed the bare commit-sha image tag being published by both the branch run and the tag run when a tag is pushed on a `release/*` branch head, where whichever finished last silently won. Only branch builds publish it now.
+
 ## v3.11.0-fh3.0
 
 * Bumped to [3.11.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.0).
