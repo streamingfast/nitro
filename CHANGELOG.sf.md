@@ -5,6 +5,12 @@
 * Removed the `<version>-fireeth-<fireeth version>` image tag. Releases are identified by their version alone, e.g. `v3.11.2-fh3.0`.
 * Fixed the bare commit-sha image tag being published by both the branch run and the tag run when a tag is pushed on a `release/*` branch head, where whichever finished last silently won. Only branch builds publish it now.
 
+## v3.11.2-fh3.0
+
+* Bumped to [3.11.2](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.2).
+    * Also contains [3.11.1](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.1).
+* `go-ethereum` unchanged at [arbitrum-v3.11.1-fh-2](https://github.com/streamingfast/go-ethereum/tree/arbitrum-v3.11.1-fh-2): upstream nitro keeps the same go-ethereum revision between v3.11.1 and v3.11.2, and no firehose change is required.
+
 ## v3.11.0-fh3.0
 
 * Bumped to [3.11.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.0).
