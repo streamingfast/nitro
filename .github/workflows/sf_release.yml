@@ -42,7 +42,7 @@ jobs:
       # The digest below is resolved against the registry, so authenticate even
       # though the firehose-ethereum image is public today.
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -126,7 +126,7 @@ jobs:
           submodules: recursive
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -134,12 +134,12 @@ jobs:
 
       - name: Generate docker labels from github build context
         id: meta-bare
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}
 
       - name: Build nitro Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: nitro-node
@@ -153,7 +153,7 @@ jobs:
       # concurrent run overwriting it cannot corrupt a published manifest.
       - name: Build and push final (fireeth + nitro) per-arch image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.sf
@@ -185,7 +185,7 @@ jobs:
           echo "${digest}" > "/tmp/digests/${ARCH}"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.arch }}
           path: /tmp/digests/${{ matrix.arch }}
@@ -202,14 +202,14 @@ jobs:
 
     steps:
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download image digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-*
@@ -217,7 +217,7 @@ jobs:
 
       - name: Generate docker tags from github build context
         id: meta-bare
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}
           tags: |
@@ -266,7 +266,7 @@ jobs:
 
     steps:
       - name: Log in to the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
