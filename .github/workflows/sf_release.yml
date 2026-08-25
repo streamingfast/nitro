@@ -295,8 +295,11 @@ jobs:
           curl -L https://github.com/streamingfast/sfreleaser/releases/download/v0.12.1/sfreleaser_linux_x86_64.tar.gz | tar -xz
           chmod +x sfreleaser
 
+          # Select the section by version: without it sfreleaser takes the first
+          # '## ' section, which is the (possibly empty) Unreleased one.
           ./sfreleaser changelog extract-section \
             github://token:${{ github.token }}@${{ github.repository }}/$GITHUB_SHA/CHANGELOG.sf.md \
+            "${{ needs.prepare.outputs.version }}" \
             --github-output="changelog:$GITHUB_OUTPUT"
 
       - name: Release

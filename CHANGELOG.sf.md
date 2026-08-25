@@ -4,6 +4,7 @@
 
 * Pinned `firehose-ethereum` to [v2.21.0](https://github.com/streamingfast/firehose-ethereum/releases/tag/v2.21.0), which brings the `--common-merged-blocks-bundle-size` flag.
 * Fixed the Docker build failing with `forge: No such file or directory`: the Foundry installer no longer adds its bin directory to `~/.bashrc`, so the `contracts-builder` stage now sets `PATH` itself.
+* Fixed the release job failing to extract release notes: the changelog section is now selected by version instead of taking whichever section comes first.
 * Added `linux/arm64` support: the published Docker image is now a multi-arch manifest covering `linux/amd64` and `linux/arm64`, and releases ship a `nitro_linux_arm64` binary alongside `nitro_linux_amd64`.
 * Changed the Firehose Ethereum base image to be pinned by digest for the whole build, so both architectures in a manifest are guaranteed to embed the same `firehose-ethereum` build.
 * Removed the `<version>-fireeth-<fireeth version>` image tag. Releases are identified by their version alone, e.g. `v3.11.2-fh3.0`.
