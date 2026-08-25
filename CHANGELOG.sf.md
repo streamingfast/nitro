@@ -1,6 +1,6 @@
 ## Unreleased
 
-## v3.11.2-fh3.0-2
+## v3.11.2-fh3.0-3
 
 * Pinned `firehose-ethereum` to [v2.21.0](https://github.com/streamingfast/firehose-ethereum/releases/tag/v2.21.0), which brings the `--common-merged-blocks-bundle-size` flag.
 * Fixed the Docker build failing with `forge: No such file or directory`: the Foundry installer no longer adds its bin directory to `~/.bashrc`, so the `contracts-builder` stage now sets `PATH` itself.
