@@ -1,5 +1,5 @@
 ARG NITRO_BASE_IMAGE=ghcr.io/streamingfast/nitro:nitro-v3.7.3-fh3.0-1
-ARG FIREHOSE_ETHEREUM_IMAGE=ghcr.io/streamingfast/firehose-ethereum:latest
+ARG FIREHOSE_ETHEREUM_IMAGE=ghcr.io/streamingfast/firehose-ethereum:v2.21.0
 
 FROM ${FIREHOSE_ETHEREUM_IMAGE} AS firehose-ethereum
 

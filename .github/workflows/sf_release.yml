@@ -7,7 +7,7 @@ on:
       firehose_ethereum_image:
         description: "Firehose Ethereum Docker image"
         required: false
-        default: "ghcr.io/streamingfast/firehose-ethereum:latest"
+        default: "ghcr.io/streamingfast/firehose-ethereum:v2.21.0"
   push:
     tags:
       - "*"
@@ -25,7 +25,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:latest' }}
+  FIREHOSE_ETHEREUM_IMAGE: ${{ inputs.firehose_ethereum_image || 'ghcr.io/streamingfast/firehose-ethereum:v2.21.0' }}
 
 jobs:
   prepare:
