@@ -1,5 +1,11 @@
 ## Unreleased
 
+## v3.11.2-fh3.0-4
+
+* Updated `go-ethereum` to [5c4f5d2aba](https://github.com/streamingfast/go-ethereum/commit/5c4f5d2aba58a7513fbf095fe534d06958fe8c3d).
+    * Stopped recording keccak preimages larger than 256 bytes on calls. The map exists so a consumer can walk a storage slot back to the mapping key or array that produced it, and Solidity's slot derivations are small: 32 bytes for a dynamic array or a long `bytes`/`string`, 64 bytes for a mapping with a value-type key, and 32 bytes plus the key for a `mapping(string => V)`. 256 bytes covers all of those, with room for a 224-byte dynamic key. The large ones came from contracts hashing their own data and could reach 64 KiB each; they are dropped rather than truncated, since a truncated preimage no longer hashes back to its key.
+    * Added a regression test asserting that the arbitrum-simulated transaction types (deposit, submit-retryable, internal) keep their two-call shape: an empty simulated root plus the nested ArbOS execution frame.
+
 ## v3.11.2-fh3.0-3
 
 * Pinned `firehose-ethereum` to [v2.21.0](https://github.com/streamingfast/firehose-ethereum/releases/tag/v2.21.0), which brings the `--common-merged-blocks-bundle-size` flag.
