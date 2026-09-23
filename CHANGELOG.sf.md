@@ -2,7 +2,7 @@
 
 ## v3.11.2-fh3.0-5
 
-* Pinned `firehose-ethereum` to [v2.23.0](https://github.com/streamingfast/firehose-ethereum/releases/tag/v2.23.0) in the Docker image.
+* Changed the Docker image to use `firehose-ethereum:latest` instead of a pinned version. At release time it contains [v2.23.0](https://github.com/streamingfast/firehose-ethereum/releases/tag/v2.23.0).
 
 ## v3.11.2-fh3.0-4
 
