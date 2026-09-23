@@ -1,5 +1,9 @@
 ## Unreleased
 
+## v3.11.2-fh3.0-5
+
+* Changed the Docker image to use `firehose-ethereum:latest` instead of a pinned version. At release time it contains [v2.23.0](https://github.com/streamingfast/firehose-ethereum/releases/tag/v2.23.0).
+
 ## v3.11.2-fh3.0-4
 
 * Updated `go-ethereum` to [5c4f5d2aba](https://github.com/streamingfast/go-ethereum/commit/5c4f5d2aba58a7513fbf095fe534d06958fe8c3d).
