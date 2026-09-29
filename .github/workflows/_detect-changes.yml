@@ -26,6 +26,7 @@ permissions:
 
 jobs:
   changes:
+    if: false
     name: Detect file changes
     runs-on: ubuntu-4
     outputs:
