@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v3.11.4-fh3.0
+
 * Bumped to [3.11.4](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.4).
     * Also contains [3.11.3](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.3).
 * Updated `go-ethereum` to [95b0642399](https://github.com/streamingfast/go-ethereum/commit/95b0642399c3a06e6e49e19684811fdf72c64e7a), which brings the go-ethereum revision pinned by nitro v3.11.4.
