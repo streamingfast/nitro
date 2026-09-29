@@ -28,9 +28,9 @@ COPY --from=brotli-library-builder /workspace/install/ /
 FROM node:24.4.1-bookworm-slim AS contracts-builder
 RUN apt-get update && \
     apt-get install -y git python3 make g++ curl
-# The foundry installer does not put its bin dir on PATH, so set it here.
+# foundryup-init no longer adds ~/.foundry/bin to the shell profile, so put it on PATH explicitly
 ENV PATH="/root/.foundry/bin:${PATH}"
-RUN curl -L https://foundry.paradigm.xyz | bash && foundryup -i 1.2.3
+RUN curl --proto '=https' --tlsv1.2 -fsSL --retry 3 https://foundry.paradigm.xyz | bash && foundryup -i 1.2.3
 WORKDIR /workspace
 COPY contracts-legacy/package.json contracts-legacy/yarn.lock contracts-legacy/
 RUN cd contracts-legacy && yarn install
@@ -49,7 +49,7 @@ WORKDIR /workspace
 RUN apt-get update && apt-get install -y curl build-essential=12.9
 
 FROM wasm-base AS wasm-libs-builder
-# clang / lld used by soft-float wasm
+	# clang / lld used by soft-float wasm
 RUN apt-get update && \
     apt-get install -y clang=1:14.0-55.7~deb12u1 lld=1:14.0-55.7~deb12u1 wabt
     # pinned rust 1.93.0

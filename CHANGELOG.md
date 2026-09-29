@@ -4,6 +4,57 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## Unreleased
+
+### Added
+
+- Parent chain headers with the Glamsterdam devnet-8 fields `blockAccessListHash` (EIP-7928) and `slotNumber` (EIP-7843) are now decoded and reproduce the canonical block hash. [[commit]](https://github.com/OffchainLabs/nitro/commit/db8ff47bc6a38fcf9ad05f8aabdeef72812751d0)
+
+## [v3.11.3](https://github.com/OffchainLabs/nitro/compare/v3.11.2...v3.11.3) - 2026-07-29
+
+### Configuration
+
+- Added `execution.stylus-target.max-singlepass-output-size` to limit Singlepass compiler output per Stylus module, defaults to 10 MiB. [[commit]](https://github.com/OffchainLabs/nitro/commit/4072e6103dc5334ba4baea0381c75a4af1dc5240)
+
+### Fixed
+
+- Capture panics on prefetch-tx execution and log them instead of returning. [[commit]](https://github.com/OffchainLabs/nitro/commit/37ea62ee48b233a71792e008246cf0163f2e0c93)
+- Filter retryable submissions by who actually gets funds, and catch filtered L1 senders/depositors that previously slipped through.[[commit]](https://github.com/OffchainLabs/nitro/commit/b668bd3243c8c6392dcf86d1ae06ddccc258493d)
+
+### Changed
+
+- Filtered transactions rejected by the sequencer now return the RPC error message "Transaction rejected by chain policy" instead of the generic "internal error". [[commit]](https://github.com/OffchainLabs/nitro/commit/df606b3a3ae62cf19cd44f3ce54037d03400a9f0)
+- Filtered-tx reports are now logged node-side when reported. Unbounded fields truncated to keep entries compact. [[commit]](https://github.com/OffchainLabs/nitro/commit/6f82a0dfdb256846a25228b7269a7a4b8165f8aa)
+- `cmd/filtering-report` forwarder no longer logs the full report body; its forward success/failure logs now include only the report id and tx hash. [[commit]](https://github.com/OffchainLabs/nitro/commit/6f82a0dfdb256846a25228b7269a7a4b8165f8aa)
+- Onchain-filtered transactions now trace (e.g. `debug_traceTransaction`) with the error message "Transaction rejected by chain policy", matching the RPC rejection message. [[commit]](https://github.com/OffchainLabs/nitro/commit/e1a629fad1f1a87dea3e46263b022c5747d2677c)
+
+
+## [v3.11.2](https://github.com/OffchainLabs/nitro/compare/v3.11.1...v3.11.2) - 2026-06-30
+
+### Configuration
+
+- Add `--node.dangerous.always-fallback-to-parent-chain-da` to support retiring chains off AnyTrust. [[commit]](https://github.com/OffchainLabs/nitro/commit/d71b69788edf8fd41385dcfadd9c8ee3c5ab1481)
+- Add `--execution.transaction-filtering.address-filter.s3.preallocate-memory` (default true) to preallocate and commit the hash-list memory at startup, engaging only when `s3.max-file-size-mb` is set. [[commit]](https://github.com/OffchainLabs/nitro/commit/1ca3775819688f9211f96bb8a33ad5bcc10aae9c)
+
+### Added
+
+- Added consensus-v61 to dockerfile, remove rc and older consensus. [[commit]](https://github.com/OffchainLabs/nitro/commit/e53631372daa8627f8ef086324bb5e3457ee1b46)
+
+### Changed
+
+- Default `--file-logging.max-backups` increased from 20 to 40. [[commit]](https://github.com/OffchainLabs/nitro/commit/d2f354150c3fe2c55a5cf5bc47f5147d9e7bc7f3)
+- The address filter now decodes the S3 hash list directly into preallocated, reused data structures committed at startup, so reloads perform no large allocation and cannot OOM the node. [[commit]](https://github.com/OffchainLabs/nitro/commit/1ca3775819688f9211f96bb8a33ad5bcc10aae9c)
+- Lowered the "Delayed message filtered - HALTING delayed sequencer" log from `Error` to `Info`, since halting on a filtered delayed message is expected operation. [[commit]](https://github.com/OffchainLabs/nitro/commit/b1bcce62784f4bdf9daf32ea64dcca7a1dce5dfc)
+
+### Fixed
+
+- Sequencer fee check now uses the current block's base fee instead of a value cached when block creation started. [[commit]](https://github.com/OffchainLabs/nitro/commit/bc2d34f05eab2f73b9efadaee82bd0355267e36c)
+- With file logging enabled, Go runtime panics and fatal errors are now also written to a `<log-file>.crash` file, not only to stderr. [[commit]](https://github.com/OffchainLabs/nitro/commit/d2f354150c3fe2c55a5cf5bc47f5147d9e7bc7f3)
+- Emit a balanced top-level call frame for EVM-skipped transactions (onchain-filtered txs, pre-recorded reverts, and retryable-redeem error paths) so tracing no longer fails with "incorrect number of top-level calls". [[commit]](https://github.com/OffchainLabs/nitro/commit/f1b2ec24705bf7be11563691ec4c5f422ec25fa3)
+- Fix unnecessary delays handling delayed messages  when address filtering is enabled. [[commit]](https://github.com/OffchainLabs/nitro/commit/b1bcce62784f4bdf9daf32ea64dcca7a1dce5dfc)
+- BoLD auto-deposit now detects WETH-compatible stake tokens via an `eth_call` probe of `deposit()` instead of scanning the token's bytecode, so stake tokens deployed behind a proxy are no longer misclassified as non-WETH. [[commit]](https://github.com/OffchainLabs/nitro/commit/cb652f917a42be2abd37d3d7da2183069580c114)
+
+
 ## [v3.11.1](https://github.com/OffchainLabs/nitro/compare/v3.11.0...v3.11.1) - 2026-06-29
 
 ### Fixed
