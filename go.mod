@@ -91,7 +91,7 @@ require (
 	github.com/pion/transport/v3 v3.0.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 // indirect
-	github.com/streamingfast/firehose-ethereum/types v0.0.0-20260119150111-65c739f81608 // indirect
+	github.com/streamingfast/firehose-ethereum/types v0.0.0-20260929184701-68333bf7b217 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect

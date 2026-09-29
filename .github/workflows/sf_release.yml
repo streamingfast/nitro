@@ -13,6 +13,10 @@ on:
       - "*"
     branches:
       - release/*
+  # Builds both architectures without publishing anything.
+  pull_request:
+    branches:
+      - release/*
 
 # Two runs on the same ref (a re-run, or a workflow_dispatch fired while a push
 # run is still going) resolve the same VERSION and therefore push the same
@@ -157,7 +161,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.sf
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           build-args: |
             NITRO_BASE_IMAGE=${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_name }}-base:${{ needs.prepare.outputs.version }}
             FIREHOSE_ETHEREUM_IMAGE=${{ needs.prepare.outputs.fireeth_image }}
@@ -165,6 +169,7 @@ jobs:
           labels: ${{ steps.meta-bare.outputs.labels }}
 
       - name: Export image digest
+        if: github.event_name != 'pull_request'
         env:
           ARCH: ${{ matrix.arch }}
           BUILD_DIGEST: ${{ steps.build.outputs.digest }}
@@ -185,6 +190,7 @@ jobs:
           echo "${digest}" > "/tmp/digests/${ARCH}"
 
       - name: Upload image digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.arch }}
@@ -194,6 +200,7 @@ jobs:
 
   manifest:
     name: Create multi-arch manifests
+    if: github.event_name != 'pull_request'
     needs: [prepare, build]
     runs-on: ubuntu-24.04
     permissions:

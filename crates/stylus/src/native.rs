@@ -455,9 +455,29 @@ pub fn module(
     }
 
     let module = module.serialize()?;
+    ensure_singlepass_artifact_size(
+        module.len(),
+        compile.max_singlepass_output_size(),
+        cranelift,
+    )?;
     Ok(module.to_vec())
 }
 
+pub(crate) fn ensure_singlepass_artifact_size(
+    size: usize,
+    limit: Option<usize>,
+    cranelift: bool,
+) -> Result<()> {
+    if !cranelift
+        && let Some(limit) = limit
+        && size > limit
+    {
+        bail!("singlepass compiler output exceeds limit: {size} > {limit} bytes");
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn activate(
     wasm: &[u8],
     codehash: &Bytes32,
@@ -466,6 +486,7 @@ pub fn activate(
     page_limit: u16,
     debug: bool,
     gas: &mut u64,
+    op_limit: u32,
 ) -> Result<(ProverModule, StylusData)> {
     let (module, stylus_data) = ProverModule::activate(
         wasm,
@@ -475,6 +496,7 @@ pub fn activate(
         page_limit,
         debug,
         gas,
+        op_limit.try_into()?,
     )?;
 
     Ok((module, stylus_data))
@@ -486,7 +508,9 @@ pub fn compile(
     debug: bool,
     target: Target,
     cranelift: bool,
+    max_singlepass_output_size: Option<usize>,
 ) -> Result<Vec<u8>> {
-    let compile = CompileConfig::version(version, debug);
+    let compile = CompileConfig::version(version, debug)
+        .with_max_singlepass_output_size(max_singlepass_output_size);
     self::module(wasm, compile, target, cranelift)
 }

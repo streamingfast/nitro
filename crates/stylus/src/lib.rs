@@ -119,6 +119,7 @@ pub unsafe extern "C" fn stylus_activate(
     module_hash: *mut Bytes32,
     stylus_data: *mut StylusData,
     gas: *mut u64,
+    op_limit: u32,
 ) -> UserOutcomeKind {
     unsafe {
         let wasm = wasm.slice();
@@ -135,6 +136,7 @@ pub unsafe extern "C" fn stylus_activate(
             page_limit,
             debug,
             gas,
+            op_limit,
         ) {
             Ok(val) => val,
             Err(err) => return write_err(output, err),
@@ -163,6 +165,7 @@ pub unsafe extern "C" fn stylus_compile(
     debug: bool,
     target: GoSliceData,
     cranelift: bool,
+    max_singlepass_output_size: u64,
     output: *mut RustBytes,
 ) -> UserOutcomeKind {
     unsafe {
@@ -177,7 +180,15 @@ pub unsafe extern "C" fn stylus_compile(
             Err(err) => return write_err(output, err),
         };
 
-        let asm = match native::compile(wasm, version, debug, target, cranelift) {
+        let asm = match native::compile(
+            wasm,
+            version,
+            debug,
+            target,
+            cranelift,
+            (max_singlepass_output_size != 0)
+                .then(|| usize::try_from(max_singlepass_output_size).unwrap_or(usize::MAX)),
+        ) {
             Ok(val) => val,
             Err(err) => return write_err(output, err),
         };
