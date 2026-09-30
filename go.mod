@@ -1,6 +1,6 @@
 module github.com/offchainlabs/nitro
 
-go 1.25.0
+go 1.25.4
 
 replace github.com/ethereum/go-ethereum => ./go-ethereum
 
@@ -64,11 +64,12 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.1.8 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
+	github.com/blendle/zapdriver v1.3.2-0.20200203083823-9200777f8a3d // indirect
+	github.com/btcsuite/btcd/btcec/v2 v2.3.6 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
 	github.com/crate-crypto/go-eth-kzg v1.4.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/emicklei/dot v1.6.2 // indirect
-	github.com/emmansun/base64 v0.8.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.5 // indirect
 	github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
@@ -83,7 +84,9 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
+	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/stun/v2 v2.0.0 // indirect
@@ -91,7 +94,10 @@ require (
 	github.com/pion/transport/v3 v3.0.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 // indirect
+	github.com/streamingfast/eth-go v0.0.0-20260216202159-4e2b7501894a // indirect
+	github.com/streamingfast/evm-firehose-tracer-go/v5 v5.0.0-20260930195824-c3c68f594463 // indirect
 	github.com/streamingfast/firehose-ethereum/types v0.0.0-20260929184701-68333bf7b217 // indirect
+	github.com/streamingfast/logging v0.0.0-20260108192805-38f96de0a641 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
@@ -100,6 +106,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
 	go.shabbyrobe.org/gocovmerge v0.0.0-20230507111327-fa4f82cfbf4d // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/text v0.32.0 // indirect
@@ -108,7 +116,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/grpc v1.79.3 // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
