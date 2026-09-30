@@ -1,6 +1,6 @@
 ## Unreleased
 
-* Updated `go-ethereum` to [02fc7da293](https://github.com/streamingfast/go-ethereum/commit/02fc7da2932464090d08f8c65fc8fd1a31422bf9), which moves Firehose tracing to the shared [evm-firehose-tracer-go](https://github.com/streamingfast/evm-firehose-tracer-go) library. The output changes from the switch block onward:
+* Updated `go-ethereum` to [d3442aa609](https://github.com/streamingfast/go-ethereum/commit/d3442aa609a18d846dc4d60906c6a4012fd90796), which moves Firehose tracing to the shared [evm-firehose-tracer-go](https://github.com/streamingfast/evm-firehose-tracer-go) library. The output changes from the switch block onward:
     * Blocks are now `ver: 5`, the Firehose 2.3 backward compatibility mode is gone. `accountCreations` is no longer recorded, `executedCode` is true when an opcode ran, CREATE calls keep their input, the transaction `returnData` is set, root calls keep their begin ordinal, and selfdestruct balance changes are no longer reordered or duplicated.
     * Gas changes and no-op state changes (old value equal to new value) are no longer recorded.
     * Receipt log `index` counts the logs of reverted calls, like on other chains.
