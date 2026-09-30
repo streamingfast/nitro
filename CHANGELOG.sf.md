@@ -8,6 +8,7 @@
     * The LIB advertised on each block never trails it by more than 200 blocks.
     * The output uses Firehose protocol 3.1 (`FIRE INIT 3.1`), read by `firehose-ethereum` v2.14.4 and later.
     * A failed write to the Firehose output now stops the node instead of dropping the block.
+* Blocks up to ArbOS 40 are now traced like newer ones: ArbOS execution of deposit, internal and submit-retryable transactions, the auto-redeem call and transfers made outside the EVM are reported to live tracers again, as in upstream nitro. This only changes the output when reprocessing blocks up to ArbOS 40.
 
 ## v3.11.4-fh3.0
 
