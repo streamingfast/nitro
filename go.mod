@@ -96,7 +96,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 // indirect
 	github.com/streamingfast/eth-go v0.0.0-20260216202159-4e2b7501894a // indirect
-	github.com/streamingfast/evm-firehose-tracer-go/v5 v5.0.0-20260930220430-1428b939c7c8 // indirect
+	github.com/streamingfast/evm-firehose-tracer-go/v5 v5.0.0-20261001132025-feb9613f7ce5 // indirect
 	github.com/streamingfast/firehose-ethereum/types v0.0.0-20260929184701-68333bf7b217 // indirect
 	github.com/streamingfast/logging v0.0.0-20260108192805-38f96de0a641 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
