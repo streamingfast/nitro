@@ -209,11 +209,10 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, multiGasUsed multigas.MultiG
 	var tracingInfo *util.TracingInfo
 	tipe := underlyingTx.Type()
 	p.TopTxType = &tipe
-	firehoseCompat := evm.GetVMContext().ArbOSVersion <= 40 // these were not extracted in previous firehose versions
 
 	startTracer := func() func() {
 		tracer := evm.Config.Tracer
-		if tracer == nil || firehoseCompat {
+		if tracer == nil {
 			return func() {}
 		}
 		from := p.msg.From
@@ -528,7 +527,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, multiGasUsed multigas.MultiG
 			log.Error("failed to emit RedeemScheduled event", "err", err)
 		}
 
-		if tracer := evm.Config.Tracer; tracer != nil && !firehoseCompat {
+		if tracer := evm.Config.Tracer; tracer != nil {
 			redeem, err := util.PackArbRetryableTxRedeem(ticketId)
 			if err == nil {
 				tracingInfo.MockCall(redeem, usergas, from, types.ArbRetryableTxAddress, common.Big0)

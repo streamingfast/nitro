@@ -1,5 +1,15 @@
 ## Unreleased
 
+* Updated `go-ethereum` to [3e482863c3](https://github.com/streamingfast/go-ethereum/commit/3e482863c3a5cd527735c9f745852a94e9b52f7f), which moves Firehose tracing to the shared [evm-firehose-tracer-go](https://github.com/streamingfast/evm-firehose-tracer-go) library. The output changes from the switch block onward:
+    * Blocks are now `ver: 5`, the Firehose 2.3 backward compatibility mode is gone. `accountCreations` is no longer recorded, `executedCode` is true when an opcode ran, CREATE calls keep their input, the transaction `returnData` is set, root calls keep their begin ordinal, and selfdestruct balance changes are no longer reordered or duplicated.
+    * Gas changes and no-op state changes (old value equal to new value) are no longer recorded.
+    * Receipt log `index` counts the logs of reverted calls, like on other chains.
+    * `addressDelegatesTo` (EIP-7702) is now set from ArbOS 40.
+    * The LIB advertised on each block never trails it by more than 200 blocks.
+    * The output uses Firehose protocol 3.1 (`FIRE INIT 3.1`), read by `firehose-ethereum` v2.14.4 and later.
+    * A failed write to the Firehose output now stops the node instead of dropping the block.
+* Blocks up to ArbOS 40 are now traced like newer ones: ArbOS execution of deposit, internal and submit-retryable transactions, the auto-redeem call and transfers made outside the EVM are reported to live tracers again, as in upstream nitro. This only changes the output when reprocessing blocks up to ArbOS 40.
+
 ## v3.11.4-fh3.0
 
 * Bumped to [3.11.4](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.4).
