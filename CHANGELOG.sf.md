@@ -1,5 +1,9 @@
 ## Unreleased
 
+* Bumped to [3.12.1](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.1).
+    * Also contains [3.12.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.0) and [3.11.5](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.5).
+* Updated `go-ethereum` to [cc164e37de](https://github.com/streamingfast/go-ethereum/commit/cc164e37de2f090f5ff1441f7a03b4ce8922a010), which brings the go-ethereum revision pinned by nitro v3.12.1 (upstream geth v1.17.4).
+    * A contract destroyed by `SELFDESTRUCT` now has its nonce reset to 0 and its code removed in the trace, both recorded on the root call after it ends, like on Ethereum. A `SELFDESTRUCT` to itself records a single withdraw balance change instead of a withdraw, refund and withdraw.
 * Updated `go-ethereum` to [3e482863c3](https://github.com/streamingfast/go-ethereum/commit/3e482863c3a5cd527735c9f745852a94e9b52f7f), which moves Firehose tracing to the shared [evm-firehose-tracer-go](https://github.com/streamingfast/evm-firehose-tracer-go) library. The output changes from the switch block onward:
     * Blocks are now `ver: 5`, the Firehose 2.3 backward compatibility mode is gone. `accountCreations` is no longer recorded, `executedCode` is true when an opcode ran, CREATE calls keep their input, the transaction `returnData` is set, root calls keep their begin ordinal, and selfdestruct balance changes are no longer reordered or duplicated.
     * Gas changes and no-op state changes (old value equal to new value) are no longer recorded.
