@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/offchainlabs/nitro/arbos/burn"
 	"github.com/offchainlabs/nitro/arbos/util"
@@ -56,7 +57,7 @@ type rustSlice = C.RustSlice
 // with cranelift (at the original or doubled stack size, depending on whether
 // this is the first overflow).
 type savedState struct {
-	gas          uint64
+	gas          vm.GasBudget
 	usedMultiGas multigas.MultiGas
 	openPages    uint16
 	everPages    uint16
@@ -117,6 +118,9 @@ var nativeStackBaseline atomic.Uint64
 // Storing a non-zero baseline re-enables doubleNativeStackSize.
 func SetInitialNativeStackSize(size uint64) {
 	SetNativeStackSize(size)
+	// Stacks pooled before the size change keep their old size, so drop them
+	// the same way doubleNativeStackSize does.
+	DrainStackPool()
 	// Always capture the true Wasmer stack size (whether newly set or the
 	// existing default when size == 0) so doubleNativeStackSize can
 	// double from a real baseline.
@@ -164,6 +168,19 @@ func GetNativeStackSize() uint64 {
 	return uint64(C.stylus_get_native_stack_size())
 }
 
+// WasmerSerializeVersion returns wasmer's MetadataHeader::CURRENT_VERSION
+func WasmerSerializeVersion() uint32 {
+	return uint32(C.stylus_wasmer_serialize_version())
+}
+
+// RustWavmFormatVersion returns the WAVM wire-format version Rust will
+// produce and accept. `reconcileWavmSerializeVersion` in
+// cmd/nitro/init compares this against `WavmSerializeVersion` on startup
+// and refuses to proceed on mismatch.
+func RustWavmFormatVersion() uint32 {
+	return uint32(C.stylus_wavm_format_version())
+}
+
 // DrainStackPool discards all cached Wasmer coroutine stacks so that
 // subsequent allocations use the current process-wide stack size.
 func DrainStackPool() {
@@ -195,12 +212,16 @@ func activateProgram(
 	burner burn.Burner,
 	runCtx *core.MessageRunContext,
 ) (*activationInfo, error) {
+	nodeConfig := GetStylusConfig(db)
+	if !runCtx.IsExecutedOnChain() && !nodeConfig.AllowOffchainActivation {
+		return nil, fmt.Errorf("%w: %w", ErrProgramActivation, ErrOffchainActivationNotAllowed)
+	}
+
 	moduleActivationMandatory := true
 	suppliedGas := burner.GasLeft()
 	gasLeft := suppliedGas
 	shouldAllowFallback := GetAllowFallback() && runCtx.IsExecutedOnChain()
 
-	nodeConfig := GetStylusConfig(db)
 	info, asmMap, err := activateProgramInternal(program, codehash, wasm, page_limit, stylusVersion, arbosVersionForGas, debug, &gasLeft, runCtx.WasmTargets(), moduleActivationMandatory, shouldAllowFallback, nodeConfig, runCtx)
 	if gasLeft < suppliedGas {
 		// Ignore the out-of-gas error because we want to return the error above
@@ -460,7 +481,7 @@ func getCompiledProgram(statedb vm.StateDB, moduleHash common.Hash, addressForLo
 	if currentHoursSince > program.activatedAt {
 		// stylus program is active on-chain, and was activated in the past
 		// so we store it directly to database (including cranelift entries)
-		batch := statedb.Database().WasmStore().NewBatch()
+		batch := statedb.Database().CodeDB().WasmStore().NewBatch()
 		// rawdb.WriteActivation iterates over the asms map and writes each entry separately to wasmdb, so the writes for the same module hash can be incremental
 		// we know that all targets for which asms were found initially, were read from disk as oppose to from newly activated asms from memory, as otherwise statedb.ActivatedAsmMap would have failed with an error because of missing targets within newly activated asms
 		if err := rawdb.WriteActivation(batch, moduleHash, newlyBuilt); err != nil {
@@ -543,7 +564,7 @@ func doStylusCall(
 		evmData.encode(),
 		cbool(debug),
 		output,
-		(*u64)(&scope.Contract.Gas),
+		(*u64)(&scope.Contract.Gas.RegularGas),
 		u32(runCtx.WasmCacheTag()),
 	))
 	return status, rustBytesIntoBytes(output)
@@ -558,15 +579,15 @@ func callProgram(
 	tracingInfo *util.TracingInfo,
 	calldata []byte,
 	evmData *EvmData,
-	stylusParams *ProgParams,
+	progParams *ProgParams,
 	memoryModel *MemoryModel,
 	runCtx *core.MessageRunContext,
 	code []byte,
-	params *StylusParams,
+	stylusParams *StylusParams,
 	program Program,
 ) ([]byte, error) {
 	db := evm.StateDB
-	debug := stylusParams.DebugMode
+	debug := progParams.DebugMode
 
 	if len(localAsm) == 0 {
 		log.Error("missing asm", "program", address, "module", moduleHash)
@@ -585,14 +606,14 @@ func callProgram(
 	saved := saveState(scope, db)
 
 	// First attempt with the locally-compiled ASM (singlepass or cranelift, depending on activation).
-	status, output := doStylusCall(localAsm, calldata, stylusParams, evm, tracingInfo, scope, memoryModel, evmData, debug, runCtx, params)
+	status, output := doStylusCall(localAsm, calldata, progParams, evm, tracingInfo, scope, memoryModel, evmData, debug, runCtx, stylusParams)
 
-	if status == userNativeStackOverflow {
-		status, output = handleNativeStackOverflow(
+	if status == userNativeStackOverflow || status == userSystemError {
+		status, output = handleSystemError(
 			address, moduleHash,
-			scope, evm, tracingInfo, calldata, evmData, stylusParams,
+			scope, evm, tracingInfo, calldata, evmData, progParams,
 			memoryModel, runCtx, &saved, debug, db,
-			code, params, program,
+			code, stylusParams, program, status, output,
 		)
 	}
 
@@ -606,10 +627,28 @@ func callProgram(
 		panic(fmt.Sprintf("native stack overflow not resolved (program=%v, module=%v, depth=%d, allowFallback=%v, onChain=%v, stackSize=%d)",
 			address, moduleHash, depth, GetAllowFallback(), runCtx.IsExecutedOnChain(), GetNativeStackSize()))
 	}
+	if status == userSystemError {
+		panic(fmt.Sprintf("stylus system error not resolved (program=%v, module=%v, depth=%d, allowFallback=%v, onChain=%v, stackSize=%d): %s",
+			address, moduleHash, depth, GetAllowFallback(), runCtx.IsExecutedOnChain(), GetNativeStackSize(), arbutil.ToStringOrHex(output)))
+	}
 	data, msg, err := status.toResult(output, debug)
 
+	// The memory.fill value overflow error is a known issue in ArbOS versions
+	// prior to 59.
 	if err != nil && strings.Contains(msg, "memory.fill value exceeds 8 bits") {
-		log.Error("memory.fill value overflow triggered")
+		if evmData.arbosVersion < params.ArbosVersion_59 {
+			log.Error("memory.fill value overflow triggered, filtering tx",
+				"program", address, "depth", depth)
+			evm.StateDB.FilterTx()
+		} else {
+			log.Debug("memory.fill overflow message in revert data, processing normally",
+				"program", address, "depth", depth, "arbosVersion", evmData.arbosVersion)
+		}
+	}
+
+	if status == userStorageCacheLimitExceeded {
+		log.Info("stylus storage cache limit exceeded", "program", address,
+			"limit", evmData.storageCacheLimit, "runMode", runCtx.RunModeMetricName())
 		evm.StateDB.FilterTx()
 	}
 
@@ -617,19 +656,18 @@ func callProgram(
 		log.Warn("program failure", "err", err, "msg", msg, "program", address, "depth", depth)
 	}
 	if tracingInfo != nil {
-		tracingInfo.CaptureStylusExit(uint8(status), data, err, scope.Contract.Gas)
+		tracingInfo.CaptureStylusExit(uint8(status), data, err, scope.Contract.Gas.RegularGas)
 	}
 	return data, err
 }
 
-// handleNativeStackOverflow handles a native stack overflow by compiling
-// cranelift ASM and retrying. On the first overflow it also doubles the
-// process-wide Wasmer coroutine stack size (kept permanently); subsequent
-// overflows retry with cranelift at the already-doubled size.
+// handleSystemError handles a host side failure by compiling cranelift ASM and
+// retrying. Native stack overflows also double the process wide Wasmer
+// coroutine stack size on the first retry.
 //
-// Returns userNativeStackOverflow without retrying when fallback is disabled,
+// Returns the original status without retrying when fallback is disabled,
 // off-chain, or cranelift ASM is unavailable — the caller panics in that case.
-func handleNativeStackOverflow(
+func handleSystemError(
 	address common.Address,
 	moduleHash common.Hash,
 	scope *vm.ScopeContext,
@@ -646,33 +684,38 @@ func handleNativeStackOverflow(
 	code []byte,
 	params *StylusParams,
 	program Program,
+	systemStatus userStatus,
+	systemError []byte,
 ) (userStatus, []byte) {
 	if !GetAllowFallback() {
-		log.Warn("native stack overflow, fallback disabled",
-			"program", address, "module", moduleHash)
-		return userNativeStackOverflow, nil
+		log.Warn("stylus system failure, fallback disabled",
+			"program", address, "module", moduleHash, "err", arbutil.ToStringOrHex(systemError))
+		return systemStatus, systemError
 	}
 	if !runCtx.IsExecutedOnChain() {
-		log.Info("native stack overflow, no stack doubling for off-chain execution",
-			"program", address, "module", moduleHash)
-		return userNativeStackOverflow, nil
+		log.Info("stylus system failure, no retry for off-chain execution",
+			"program", address, "module", moduleHash, "err", arbutil.ToStringOrHex(systemError))
+		return systemStatus, systemError
 	}
 
 	craneliftAsm, err := getCraneliftAsm(moduleHash, address, db, code, params, program.version, debug)
 	if err != nil || len(craneliftAsm) == 0 {
-		log.Error("native stack overflow, cranelift ASM unavailable",
-			"program", address, "module", moduleHash, "err", err)
-		return userNativeStackOverflow, nil
+		log.Error("stylus system failure, cranelift ASM unavailable",
+			"program", address, "module", moduleHash, "err", err, "systemErr", arbutil.ToStringOrHex(systemError))
+		return systemStatus, systemError
 	}
 
-	// On the first overflow, double the process-wide Wasmer coroutine stack size.
-	// On subsequent overflows doubleNativeStackSize is a no-op (baseline already
-	// consumed via CAS) — we still retry with cranelift at the already-doubled size.
-	doubleNativeStackSize()
+	if systemStatus == userNativeStackOverflow {
+		// On the first overflow, double the process-wide Wasmer coroutine stack size.
+		// On subsequent overflows doubleNativeStackSize is a no-op (baseline already
+		// consumed via CAS) — we still retry with cranelift at the already-doubled size.
+		doubleNativeStackSize()
+	}
 
 	// Revert any partial state changes the previous attempt may have made via
-	// host I/O before the overflow, then retry with cranelift.
+	// host I/O before the system failure, then retry with cranelift.
 	saved.restore(scope, db)
+	C.stylus_replace_module(goSlice(craneliftAsm), hashToBytes32(moduleHash), u16(program.version), cbool(debug))
 
 	return doStylusCall(craneliftAsm, calldata, stylusParams, evm, tracingInfo, scope, memoryModel, evmData, debug, runCtx, params)
 }
@@ -704,21 +747,20 @@ func getCraneliftAsm(
 		return nil, fmt.Errorf("cranelift ASM not cached and contract code/params unavailable for compilation")
 	}
 
-	log.Warn("native stack overflow, compiling with cranelift",
+	log.Warn("stylus system failure, compiling with cranelift",
 		"program", address, "module", moduleHash)
 
 	wasm, err := getWasmFromContractCode(db, code, params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get wasm for cranelift compilation: %w", err)
 	}
-
 	asm, err := compileNative(wasm, version, debug, craneliftTarget, true, 0, 15*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("cranelift compilation failed: %w", err)
 	}
 
 	// Persist to wasm store.
-	wasmStore := db.Database().WasmStore()
+	wasmStore := db.Database().CodeDB().WasmStore()
 	if wasmStore != nil {
 		batch := wasmStore.NewBatch()
 		err := rawdb.WriteActivatedAsm(batch, craneliftTarget, moduleHash, asm)
@@ -726,7 +768,7 @@ func getCraneliftAsm(
 			err = batch.Write()
 		}
 		if err != nil {
-			log.Warn("failed to persist cranelift ASM to wasm store, will recompile on next overflow",
+			log.Warn("failed to persist cranelift ASM to wasm store, will recompile on next retry",
 				"program", address, "err", err)
 		}
 	}
@@ -936,22 +978,23 @@ func (params *ProgParams) encode() C.StylusConfig {
 
 func (data *EvmData) encode() C.EvmData {
 	return C.EvmData{
-		arbos_version:    u64(data.arbosVersion),
-		block_basefee:    hashToBytes32(data.blockBasefee),
-		chainid:          u64(data.chainId),
-		block_coinbase:   addressToBytes20(data.blockCoinbase),
-		block_gas_limit:  u64(data.blockGasLimit),
-		block_number:     u64(data.blockNumber),
-		block_timestamp:  u64(data.blockTimestamp),
-		contract_address: addressToBytes20(data.contractAddress),
-		module_hash:      hashToBytes32(data.moduleHash),
-		msg_sender:       addressToBytes20(data.msgSender),
-		msg_value:        hashToBytes32(data.msgValue),
-		tx_gas_price:     hashToBytes32(data.txGasPrice),
-		tx_origin:        addressToBytes20(data.txOrigin),
-		reentrant:        u32(data.reentrant),
-		return_data_len:  0,
-		cached:           cbool(data.cached),
-		tracing:          cbool(data.tracing),
+		arbos_version:       u64(data.arbosVersion),
+		block_basefee:       hashToBytes32(data.blockBasefee),
+		chainid:             u64(data.chainId),
+		block_coinbase:      addressToBytes20(data.blockCoinbase),
+		block_gas_limit:     u64(data.blockGasLimit),
+		block_number:        u64(data.blockNumber),
+		block_timestamp:     u64(data.blockTimestamp),
+		contract_address:    addressToBytes20(data.contractAddress),
+		module_hash:         hashToBytes32(data.moduleHash),
+		msg_sender:          addressToBytes20(data.msgSender),
+		msg_value:           hashToBytes32(data.msgValue),
+		tx_gas_price:        hashToBytes32(data.txGasPrice),
+		tx_origin:           addressToBytes20(data.txOrigin),
+		reentrant:           u32(data.reentrant),
+		return_data_len:     0,
+		storage_cache_limit: u32(data.storageCacheLimit),
+		cached:              cbool(data.cached),
+		tracing:             cbool(data.tracing),
 	}
 }

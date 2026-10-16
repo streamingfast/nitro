@@ -140,13 +140,6 @@ jobs:
           )
 
           BASE_REF="${BASE_REF#refs/heads/}"
-          case "$BASE_REF" in
-            master|main) ;;
-            *)
-              echo "::error::Unexpected BASE_REF '${BASE_REF}'"
-              exit 1
-              ;;
-          esac
 
           # On a -private nitro fork, some submodule repos are themselves
           # private forks (see .private-submodules.conf). For those, query

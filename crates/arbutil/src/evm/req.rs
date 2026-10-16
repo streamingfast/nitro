@@ -1,16 +1,14 @@
 // Copyright 2023-2026, Offchain Labs, Inc.
 // For license information, see https://github.com/OffchainLabs/nitro/blob/master/LICENSE.md
 
-use std::collections::hash_map::Entry;
-
 use eyre::{Result, bail, eyre};
 
 use super::api::{Gas, Ink};
 use crate::{
     Bytes20, Bytes32,
     evm::{
-        api::{CreateRespone, DataReader, EvmApi, EvmApiMethod, EvmApiStatus},
-        storage::{StorageCache, StorageWord},
+        api::{CreateResponse, DataReader, EvmApi, EvmApiMethod, EvmApiStatus},
+        storage::StorageCache,
         user::UserOutcomeKind,
     },
 };
@@ -27,12 +25,12 @@ pub struct EvmApiRequestor<D: DataReader, H: RequestHandler<D>> {
 }
 
 impl<D: DataReader, H: RequestHandler<D>> EvmApiRequestor<D, H> {
-    pub fn new(handler: H) -> Self {
+    pub fn new(handler: H, storage_cache_limit: u32) -> Self {
         Self {
             handler,
             last_code: None,
             last_return_data: None,
-            storage_cache: StorageCache::default(),
+            storage_cache: StorageCache::new(storage_cache_limit),
         }
     }
 
@@ -75,7 +73,7 @@ impl<D: DataReader, H: RequestHandler<D>> EvmApiRequestor<D, H> {
         endowment: Bytes32,
         salt: Option<Bytes32>,
         gas: Gas,
-    ) -> Result<(CreateRespone, u32, Gas)> {
+    ) -> Result<(CreateResponse, u32, Gas)> {
         let mut request = Vec::with_capacity(8 + 2 * 32 + code.len());
         request.extend(gas.to_be_bytes());
         request.extend(endowment);
@@ -91,13 +89,13 @@ impl<D: DataReader, H: RequestHandler<D>> EvmApiRequestor<D, H> {
             }
             let err_string =
                 String::from_utf8(res).unwrap_or("create_response_malformed".to_string());
-            return Ok((CreateRespone::Fail(err_string), 0, cost));
+            return Ok((CreateResponse::Fail(err_string), 0, cost));
         }
         res.remove(0);
         let address = res.try_into()?;
         let data_len = data.slice().len() as u32;
         self.last_return_data = Some(data);
-        Ok((CreateRespone::Succes(address), data_len, cost))
+        Ok((CreateResponse::Success(address), data_len, cost))
     }
 }
 
@@ -106,25 +104,22 @@ impl<D: DataReader, H: RequestHandler<D>> EvmApi<D> for EvmApiRequestor<D, H> {
         let cache = &mut self.storage_cache;
         let mut cost = cache.read_gas();
 
-        let value = match cache.entry(key) {
-            Entry::Occupied(v) => v.get().value,
-            Entry::Vacant(v) => {
-                let (res, _, gas) = self.handler.request(EvmApiMethod::GetBytes32, key);
-                cost = cost.saturating_add(gas).saturating_add(evm_api_gas_to_use);
-                let value = res.try_into()?;
-                v.insert(StorageWord::known(value));
-                value
-            }
+        let value = if let Some(value) = cache.get(&key) {
+            value
+        } else {
+            cache.ensure_capacity()?;
+            let (res, _, gas) = self.handler.request(EvmApiMethod::GetBytes32, key);
+            cost = cost.saturating_add(gas).saturating_add(evm_api_gas_to_use);
+            let value = res.try_into()?;
+            cache.insert_known(key, value)?;
+            value
         };
         Ok((value, cost))
     }
 
     fn cache_bytes32(&mut self, key: Bytes32, value: Bytes32) -> Result<Gas> {
         let cost = self.storage_cache.write_gas();
-        match self.storage_cache.entry(key) {
-            Entry::Occupied(mut key) => key.get_mut().value = value,
-            Entry::Vacant(slot) => drop(slot.insert(StorageWord::unknown(value))),
-        };
+        self.storage_cache.cache(key, value)?;
         Ok(cost)
     }
 
@@ -133,18 +128,13 @@ impl<D: DataReader, H: RequestHandler<D>> EvmApi<D> for EvmApiRequestor<D, H> {
         clear: bool,
         gas_left: Gas,
     ) -> Result<(Gas, UserOutcomeKind)> {
-        let mut data = Vec::with_capacity(64 * self.storage_cache.len() + 8);
+        let entries = self.storage_cache.flush(clear);
+        let mut data = Vec::with_capacity(64 * entries.len() + 8);
         data.extend(gas_left.to_be_bytes());
 
-        for (key, value) in &mut self.storage_cache.slots {
-            if value.dirty() {
-                data.extend(*key);
-                data.extend(*value.value);
-                value.known = Some(value.value);
-            }
-        }
-        if clear {
-            self.storage_cache.clear();
+        for (key, value) in entries {
+            data.extend(key);
+            data.extend(value);
         }
         if data.len() == 8 {
             return Ok((Gas(0), UserOutcomeKind::Success)); // no need to make request
@@ -238,7 +228,7 @@ impl<D: DataReader, H: RequestHandler<D>> EvmApi<D> for EvmApiRequestor<D, H> {
         code: Vec<u8>,
         endowment: Bytes32,
         gas: Gas,
-    ) -> Result<(CreateRespone, u32, Gas)> {
+    ) -> Result<(CreateResponse, u32, Gas)> {
         self.create_request(EvmApiMethod::Create1, code, endowment, None, gas)
     }
 
@@ -248,7 +238,7 @@ impl<D: DataReader, H: RequestHandler<D>> EvmApi<D> for EvmApiRequestor<D, H> {
         endowment: Bytes32,
         salt: Bytes32,
         gas: Gas,
-    ) -> Result<(CreateRespone, u32, Gas)> {
+    ) -> Result<(CreateResponse, u32, Gas)> {
         self.create_request(EvmApiMethod::Create2, code, endowment, Some(salt), gas)
     }
 

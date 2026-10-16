@@ -13,51 +13,63 @@ import (
 	"testing"
 	"time"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-
-	"github.com/offchainlabs/nitro/util/arbmath"
 )
 
-func TestSequencerParallelNonces(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	builder := NewNodeBuilder(ctx).DefaultConfig(t, false).WithDatabase(rawdb.DBPebble)
-	builder.takeOwnership = false
-	builder.execConfig.Sequencer.NonceFailureCacheExpiry = time.Minute
+func TestSequencerSelfSponsoredSetCodeNonce(t *testing.T) {
+	builder := NewNodeBuilder(t.Context()).DefaultConfig(t, false)
 	cleanup := builder.Build(t)
 	defer cleanup()
 
-	builder.L2Info.GenerateAccount("Destination")
+	builder.L2Info.GenerateAccount("User")
+	builder.L2.TransferBalance(t, "Owner", "User", big.NewInt(1e18), builder.L2Info)
 
-	wg := sync.WaitGroup{}
-	for thread := 0; thread < 10; thread++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 10; i++ {
-				tx := builder.L2Info.PrepareTx("Owner", "Destination", builder.L2Info.TransferGas, common.Big1, nil)
-				// Sleep a random amount of time up to 20 milliseconds
-				time.Sleep(time.Millisecond * time.Duration(rand.Intn(20)))
-				t.Log("Submitting transaction with nonce", tx.Nonce())
-				err := builder.L2.Client.SendTransaction(ctx, tx)
-				if goroutineErrorf(t, ctx, cancel, err, "SendTransaction failed: %v", err) {
-					return
-				}
-				t.Log("Got response for transaction with nonce", tx.Nonce())
-			}
-		}()
-	}
-	wg.Wait()
+	user := builder.L2Info.GetInfoWithPrivKey("User")
+	chainID := uint256.MustFromBig(builder.chainConfig.ChainID)
 
-	addr := builder.L2Info.GetAddress("Destination")
-	balance, err := builder.L2.Client.BalanceAt(ctx, addr, nil)
+	// A self-sponsored authorization advances the sender's nonce a second time,
+	// after the transaction itself already advanced it, so the authorization
+	// nonce is the transaction nonce plus one and the account nonce advances by
+	// two in total.
+	txNonce := user.Nonce.Add(2) - 2
+	codeAuth, err := types.SignSetCode(user.PrivateKey, types.SetCodeAuthorization{
+		ChainID: *chainID,
+		Address: builder.L2Info.GetAddress("Owner"),
+		Nonce:   txNonce + 1,
+	})
 	Require(t, err)
-	if !arbmath.BigEquals(balance, big.NewInt(100)) {
-		Fatal(t, "Unexpected user balance", balance)
+
+	setCodeTx := builder.L2Info.SignTxAs("User", &types.SetCodeTx{
+		ChainID:   chainID,
+		Nonce:     txNonce,
+		GasTipCap: uint256.MustFromBig(builder.L2Info.GasPrice),
+		GasFeeCap: uint256.MustFromBig(builder.L2Info.GasPrice),
+		Gas:       builder.L2Info.TransferGas + 100_000,
+		To:        builder.L2Info.GetAddress("Owner"),
+		Value:     uint256.NewInt(0),
+		AuthList:  []types.SetCodeAuthorization{codeAuth},
+	})
+
+	transferTx := builder.L2Info.PrepareTx("User", "Owner", builder.L2Info.TransferGas, common.Big1, nil)
+
+	_, txResults := sequenceTransactionsInTheSameBlock(t, builder, types.Transactions{setCodeTx, transferTx})
+	for _, res := range txResults {
+		Require(t, res.Err)
+	}
+	_, err = builder.L2.EnsureTxSucceeded(setCodeTx)
+	Require(t, err)
+	_, err = builder.L2.EnsureTxSucceeded(transferTx)
+	Require(t, err)
+
+	nonce, err := builder.L2.Client.NonceAt(builder.ctx, user.Address, nil)
+	Require(t, err)
+	if nonce != txNonce+3 {
+		Fatal(t, "Unexpected user nonce; have", nonce, "want", txNonce+3)
 	}
 }
 

@@ -12,7 +12,8 @@ jobs:
   analyze:
     if: false # disabled (was: github.repository == 'OffchainLabs/nitro')
     name: Analyze
-    runs-on: arbitrator-ci
+    runs-on: ocl-16cpu-64ram-dind-500gi
+    timeout-minutes: 35
     permissions:
       actions: read
       contents: read
@@ -31,7 +32,7 @@ jobs:
         uses: ./.github/actions/ci-setup
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e  # v4
         with:
           languages: go
           build-mode: manual
@@ -41,6 +42,6 @@ jobs:
         run: make build
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e  # v4
         with:
           category: "/language:go"
