@@ -1,4 +1,4 @@
-## Unreleased
+## v3.12.1-fh3.0
 
 * Bumped to [3.12.1](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.1).
     * Also contains [3.12.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.0) and [3.11.5](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.5).
