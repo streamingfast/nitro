@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,8 +22,94 @@ import (
 	"github.com/offchainlabs/nitro/arbos/arbostypes"
 	"github.com/offchainlabs/nitro/arbutil"
 	"github.com/offchainlabs/nitro/execution"
+	"github.com/offchainlabs/nitro/util/containers"
 	"github.com/offchainlabs/nitro/util/testhelpers"
 )
+
+type blockingHeadExecutionClient struct {
+	execution.ExecutionClient
+	headRequestStarted chan struct{}
+	headRequestStopped chan struct{}
+	headRequestRelease chan struct{}
+	startedOnce        sync.Once
+	stoppedOnce        sync.Once
+	releaseOnce        sync.Once
+}
+
+func (c *blockingHeadExecutionClient) HeadMessageIndex() containers.PromiseInterface[arbutil.MessageIndex] {
+	return containers.DoPromise(context.Background(), func(ctx context.Context) (arbutil.MessageIndex, error) {
+		c.startedOnce.Do(func() { close(c.headRequestStarted) })
+		defer c.stoppedOnce.Do(func() { close(c.headRequestStopped) })
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-c.headRequestRelease:
+			return 0, errors.New("blocking head request released by test")
+		}
+	})
+}
+
+func (c *blockingHeadExecutionClient) releaseHeadRequest() {
+	c.releaseOnce.Do(func() { close(c.headRequestRelease) })
+}
+
+const processedMessageCountTestTimeout = 5 * time.Second
+
+func waitForProcessedMessageCountSignal(t *testing.T, signal <-chan struct{}, description string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(processedMessageCountTestTimeout):
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func TestGetProcessedMessageCountReturnsWhenCallerStops(t *testing.T) {
+	execClient := &blockingHeadExecutionClient{
+		headRequestStarted: make(chan struct{}),
+		headRequestStopped: make(chan struct{}),
+		headRequestRelease: make(chan struct{}),
+	}
+	streamer := &TransactionStreamer{
+		db:         rawdb.NewMemoryDatabase(),
+		execClient: execClient,
+	}
+	Require(t, streamer.db.Put(schema.MessageCountKey, []byte{1}))
+	streamer.StopWaiter.Start(t.Context(), streamer)
+	t.Cleanup(func() {
+		execClient.releaseHeadRequest()
+		streamer.StopAndWait()
+	})
+
+	callerCtx, stopCaller := context.WithCancel(t.Context())
+	defer stopCaller()
+	result := make(chan error, 1)
+	go func() {
+		_, err := streamer.GetProcessedMessageCount(callerCtx)
+		result <- err
+	}()
+	waitForProcessedMessageCountSignal(t, execClient.headRequestStarted, "execution head request to start")
+	stopCaller()
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected caller cancellation, got %v", err)
+		}
+	case <-time.After(processedMessageCountTestTimeout):
+		execClient.releaseHeadRequest()
+		select {
+		case <-result:
+		case <-time.After(processedMessageCountTestTimeout):
+		}
+		t.Fatal("GetProcessedMessageCount remained blocked after its caller stopped")
+	}
+
+	waitForProcessedMessageCountSignal(t, execClient.headRequestStopped, "execution head request to stop")
+	if streamer.Stopped() {
+		t.Fatal("transaction streamer stopped while canceling only the caller")
+	}
+}
 
 // stubBatchDataProvider returns getErr from the GetSequencerMessageBytes* methods
 // (the only ones exercised by these tests). All other methods return zero values
@@ -189,6 +276,48 @@ func TestExecuteNextMsgEphemeralAccumulatorNotFound(t *testing.T) {
 	}
 }
 
+func TestExecuteNextMsgYieldsWhileBlockProductionMutexHeld(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	exec, streamer, _, _ := NewTransactionStreamerForTest(t, ctx, common.Address{})
+
+	streamer.StopWaiter.Start(ctx, streamer)
+	defer streamer.StopAndWait()
+	Require(t, exec.Start(ctx))
+	defer exec.StopAndWait()
+
+	// consensusHead=1, execHead=0, so ExecuteNextMsg would otherwise have work.
+	Require(t, streamer.AddMessages(1, false, []arbostypes.MessageWithMetadata{buildL2NormalMessage()}, nil))
+
+	execHeadBefore, err := exec.HeadMessageIndex()
+	Require(t, err)
+
+	// Simulate a concurrent block producer holding the gate.
+	streamer.blockProductionMutex.Lock()
+
+	done := make(chan bool, 1)
+	go func() { done <- streamer.ExecuteNextMsg(ctx) }()
+
+	select {
+	case again := <-done:
+		if again {
+			t.Fatal("ExecuteNextMsg should return false (yield) while blockProductionMutex is held")
+		}
+	case <-time.After(2 * time.Second):
+		streamer.blockProductionMutex.Unlock()
+		t.Fatal("ExecuteNextMsg blocked on blockProductionMutex; expected non-blocking TryLock yield")
+	}
+
+	execHeadAfter, err := exec.HeadMessageIndex()
+	Require(t, err)
+	if execHeadAfter != execHeadBefore {
+		t.Fatalf("exec head advanced (%d -> %d) while blockProductionMutex was held; digest was not gated", execHeadBefore, execHeadAfter)
+	}
+
+	streamer.blockProductionMutex.Unlock()
+}
+
 type checkResultFixture struct {
 	streamer     *TransactionStreamer
 	db           ethdb.Database
@@ -320,6 +449,133 @@ func TestCheckResultMatchingHashes(t *testing.T) {
 	case err := <-fatalErrChan:
 		t.Fatalf("did not expect fatal err on matching hashes: %v", err)
 	default:
+	}
+}
+
+type stubExecutionSequencer struct {
+	execution.ExecutionSequencer
+	startResult *execution.SequencedMsg
+	startWait   time.Duration
+	startCalls  int
+	appendErr   error
+	appendCalls int
+	endErrs     []error
+}
+
+func (s *stubExecutionSequencer) IsActive() bool { return true }
+
+func (s *stubExecutionSequencer) StartSequencing(ctx context.Context) (*execution.SequencedMsg, time.Duration) {
+	s.startCalls++
+	return s.startResult, s.startWait
+}
+
+func (s *stubExecutionSequencer) EndSequencing(ctx context.Context, errWhileSequencing error) {
+	s.endErrs = append(s.endErrs, errWhileSequencing)
+}
+
+func (s *stubExecutionSequencer) AppendLastSequencedBlock() error {
+	s.appendCalls++
+	return s.appendErr
+}
+
+func setupTriggerSequencingTest(t *testing.T, ctx context.Context) (*TransactionStreamer, *stubExecutionSequencer) {
+	t.Helper()
+	_, streamer, _, _ := NewTransactionStreamerForTest(t, ctx, common.Address{})
+	stub := &stubExecutionSequencer{}
+	streamer.execSequencer = containers.Some[execution.ExecutionSequencer](stub)
+	return streamer, stub
+}
+
+func sequencedMsgAtIdx(msgIdx arbutil.MessageIndex) *execution.SequencedMsg {
+	return &execution.SequencedMsg{
+		MsgIdx:      msgIdx,
+		MsgWithMeta: buildL2NormalMessage(),
+		MsgResult:   &execution.MessageResult{},
+	}
+}
+
+// A failed exec-chain append after the message was durably written must count
+// as a successful turn (EndSequencing sees nil) and back off so ExecuteNextMsg
+// can digest the durable message, instead of the historical zero-backoff spin.
+func TestTriggerSequencingAppendFailureCommitsTurnAndBacksOff(t *testing.T) {
+	ctx := t.Context()
+	streamer, stub := setupTriggerSequencingTest(t, ctx)
+	stub.startResult = sequencedMsgAtIdx(1)
+	stub.appendErr = errors.New("append failed")
+
+	delay := streamer.triggerSequencing(ctx)
+
+	if want := streamer.config().ExecuteMessageLoopDelay; delay != want {
+		t.Errorf("triggerSequencing returned %v, want backoff %v", delay, want)
+	}
+	if len(stub.endErrs) != 1 || stub.endErrs[0] != nil {
+		t.Errorf("EndSequencing errs = %v, want exactly one nil (append failure is exec-local; the message is durable)", stub.endErrs)
+	}
+	head, err := streamer.GetHeadMessageIndex()
+	Require(t, err)
+	if head != 1 {
+		t.Errorf("consensus head = %d, want 1 (message durably written)", head)
+	}
+}
+
+func TestTriggerSequencingWriteFailureEndsTurnWithErrorAndBacksOff(t *testing.T) {
+	ctx := t.Context()
+	streamer, stub := setupTriggerSequencingTest(t, ctx)
+	// Wrong msgIdx (expected is 1) makes WriteSequencedMsg fail before any write.
+	stub.startResult = sequencedMsgAtIdx(5)
+
+	delay := streamer.triggerSequencing(ctx)
+
+	if want := streamer.config().ExecuteMessageLoopDelay; delay != want {
+		t.Errorf("triggerSequencing returned %v, want backoff %v", delay, want)
+	}
+	if len(stub.endErrs) != 1 || stub.endErrs[0] == nil {
+		t.Errorf("EndSequencing errs = %v, want exactly one non-nil write error", stub.endErrs)
+	}
+	if stub.appendCalls != 0 {
+		t.Errorf("AppendLastSequencedBlock called %d times after a failed write, want 0", stub.appendCalls)
+	}
+}
+
+func TestTriggerSequencingYieldsWhileExecBehindConsensus(t *testing.T) {
+	ctx := t.Context()
+	streamer, stub := setupTriggerSequencingTest(t, ctx)
+	// StopWaiter context only (AddMessages needs it); skip Start to keep the
+	// sequencing/execution loops out of the test.
+	streamer.StopWaiter.Start(ctx, streamer)
+	defer streamer.StopAndWait()
+	// consensusHead=1, execHead=0: exec must catch up via ExecuteNextMsg before
+	// sequencing may resume.
+	Require(t, streamer.AddMessages(1, false, []arbostypes.MessageWithMetadata{buildL2NormalMessage()}, nil))
+
+	delay := streamer.triggerSequencing(ctx)
+
+	if want := streamer.config().ExecuteMessageLoopDelay; delay != want {
+		t.Errorf("triggerSequencing returned %v, want backoff %v", delay, want)
+	}
+	if stub.startCalls != 0 {
+		t.Errorf("StartSequencing called %d times while exec is behind consensus, want 0", stub.startCalls)
+	}
+	if len(stub.endErrs) != 0 {
+		t.Errorf("EndSequencing errs = %v, want none (no turn started)", stub.endErrs)
+	}
+}
+
+func TestTriggerSequencingIdleTurnReturnsThrottleWait(t *testing.T) {
+	ctx := t.Context()
+	streamer, stub := setupTriggerSequencingTest(t, ctx)
+	stub.startWait = 50 * time.Millisecond
+
+	delay := streamer.triggerSequencing(ctx)
+
+	if delay <= 0 || delay > stub.startWait {
+		t.Errorf("triggerSequencing returned %v, want in (0, %v]", delay, stub.startWait)
+	}
+	if stub.startCalls != 1 {
+		t.Errorf("StartSequencing called %d times, want 1", stub.startCalls)
+	}
+	if len(stub.endErrs) != 1 || stub.endErrs[0] != nil {
+		t.Errorf("EndSequencing errs = %v, want exactly one nil", stub.endErrs)
 	}
 }
 

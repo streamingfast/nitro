@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/holiman/uint256"
-
 	"github.com/ethereum/go-ethereum/arbitrum/filter"
 	"github.com/ethereum/go-ethereum/arbitrum/multigas"
 	"github.com/ethereum/go-ethereum/common"
@@ -185,7 +183,7 @@ func (p *TxProcessor) emitSkippedCallFrame(to *common.Address, gasUsed uint64, e
 	}
 	depth := p.evm.Depth()
 	if tracer.OnEnter != nil {
-		tracer.OnEnter(depth, byte(typ), p.msg.From, dest, p.msg.Data, p.msg.GasLimit, p.msg.Value)
+		tracer.OnEnter(depth, byte(typ), p.msg.From, dest, p.msg.Data, p.msg.GasLimit, p.msg.Value.ToBig())
 	}
 	if tracer.OnExit != nil {
 		// Wrap with VMErrorFromErr to match the real evm.Call (core/vm/evm.go), so tracers
@@ -217,7 +215,7 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, multiGasUsed multigas.MultiG
 		}
 		from := p.msg.From
 		if tracer.OnEnter != nil {
-			tracer.OnEnter(evm.Depth(), byte(vm.CALL), from, *p.msg.To, p.msg.Data, p.msg.GasLimit, p.msg.Value)
+			tracer.OnEnter(evm.Depth(), byte(vm.CALL), from, *p.msg.To, p.msg.Data, p.msg.GasLimit, p.msg.Value.ToBig())
 		}
 		evm.IncrementDepth() // fake a call
 
@@ -257,16 +255,16 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, multiGasUsed multigas.MultiG
 				return true, multigas.ZeroGas(), err, nil
 			}
 			to = &recipient
-			txnErr = &core.ErrFilteredTx{TxHash: txHash}
+			txnErr = &core.ErrFilteredOnChain{TxHash: txHash}
 		}
-		util.MintBalance(&from, value, evm, util.TracingBeforeEVM, tracing.BalanceIncreaseDeposit)
+		util.MintBalance(&from, value.ToBig(), evm, util.TracingBeforeEVM, tracing.BalanceIncreaseDeposit)
 		defer (startTracer())()
 		// We intentionally use the variant here that doesn't do tracing,
 		// because this transfer is represented as the outer eth transaction.
 		// This transfer is necessary because we don't actually invoke the EVM.
 		// Since MintBalance already called AddBalance on `from`,
 		// we don't have EIP-161 concerns around not touching `from`.
-		core.Transfer(evm.StateDB, from, *to, uint256.MustFromBig(value))
+		core.Transfer(evm.StateDB, from, *to, value, evm.ChainRules())
 		return true, multigas.ZeroGas(), txnErr, nil
 	case *types.ArbitrumInternalTx:
 		defer (startTracer())()
@@ -298,14 +296,14 @@ func (p *TxProcessor) StartTxHook() (endTxNow bool, multiGasUsed multigas.MultiG
 			}
 			// For symmetry with other filtered tx paths, deletion from the onchain filter
 			// is handled by the external tx authority service rather than here.
-			// Note: deletion here *would* be committed despite the ErrFilteredTx in
+			// Note: deletion here *would* be committed despite the ErrFilteredOnChain in
 			// result.Err, because endTxNow=true means the outer error is nil and state
 			// is not reverted. May move to direct deletion here in future.
 			// p.state.FilteredTransactions().DeleteFree(ticketId)
 			tx.FeeRefundAddr = recipient
 			tx.Beneficiary = recipient
 			isFiltered = true
-			filteredErr = &core.ErrFilteredTx{TxHash: ticketId}
+			filteredErr = &core.ErrFilteredOnChain{TxHash: ticketId}
 		}
 
 		// For onchain-filtered txs, result.Err must be ErrFilteredOnChain even when
@@ -1023,7 +1021,7 @@ func (p *TxProcessor) PosterGas() uint64 {
 
 func (p *TxProcessor) GetPaidGasPrice() *big.Int {
 	if p.CollectTips() {
-		return p.evm.GasPrice
+		return p.evm.GasPrice.ToBig()
 	}
 	// p.evm.Context.BaseFee is already lowered to 0 when vm runs with NoBaseFee flag and 0 gas price
 	return p.evm.Context.BaseFee
@@ -1033,11 +1031,17 @@ func (p *TxProcessor) GasPriceOp(evm *vm.EVM) *big.Int {
 	if p.state.ArbOSVersion() >= params.ArbosVersion_3 {
 		return p.GetPaidGasPrice()
 	}
-	return evm.GasPrice
+	return evm.GasPrice.ToBig()
 }
 
 func (p *TxProcessor) FillReceiptInfo(receipt *types.Receipt) {
 	receipt.GasUsedForL1 = p.posterGas
+
+	receipt.EffectiveGasPrice = p.evm.Context.BaseFee
+	// Keep in sync with Receipt.DeriveFields. Messages built from RPC call arguments have no Tx.
+	if p.CollectTips() && p.msg.Tx != nil {
+		receipt.EffectiveGasPrice = p.msg.Tx.EffectiveGasPrice(p.evm.Context.BaseFee)
+	}
 }
 
 func (p *TxProcessor) MsgIsNonMutating() bool {
@@ -1068,6 +1072,7 @@ func (p *TxProcessor) RevertedTxHook(gasRemaining *uint64, usedMultiGas multigas
 
 	// Check for pre-recorded reverted transactions
 	if l2GasUsed, ok := core.RevertedTxGasUsed[txHash]; ok {
+		log.Debug("reached a reverted transaction", "hash", txHash, "gasUsed", l2GasUsed)
 		p.evm.StateDB.SetNonce(p.msg.From, p.evm.StateDB.GetNonce(p.msg.From)+1, tracing.NonceChangeEoACall)
 
 		// Calculate adjusted gas since l2GasUsed contains params.TxGas
@@ -1094,7 +1099,7 @@ func (p *TxProcessor) RevertedTxHook(gasRemaining *uint64, usedMultiGas multigas
 
 		// The EVM call is skipped (vmerr != nil below), so fake a balanced top-level
 		// frame after the nonce/gas mutations to keep the tracer callstack valid.
-		filteredErr := &core.ErrFilteredTx{TxHash: txHash}
+		filteredErr := &core.ErrFilteredOnChain{TxHash: txHash}
 		p.emitSkippedCallFrame(p.msg.To, usedGas, filteredErr)
 		return usedMultiGas, filteredErr
 	}

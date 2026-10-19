@@ -32,9 +32,10 @@ import (
 type StatelessBlockValidator struct {
 	config *BlockValidatorConfig
 
-	execSpawners     []validator.ExecutionSpawner
-	boldExecSpawners []validator.BOLDExecutionSpawner
-	redisValidator   *redis.ValidationClient
+	execSpawners       []validator.ExecutionSpawner
+	boldExecSpawners   []validator.BOLDExecutionSpawner
+	redisValidator     *redis.ValidationClient
+	boldRedisValidator *redis.BOLDRedisExecutionClient
 
 	wasmTargets []rawdb.WasmTarget
 
@@ -53,8 +54,10 @@ type BlockValidatorRegistrer interface {
 	SetBlockValidator(*BlockValidator)
 }
 
+// InboxTrackerInterface is implemented by the legacy InboxTracker and by MEL. It deliberately
+// omits BlockValidatorRegistrer, since arbnode/mel must not depend on staker; the block validator
+// is registered by the caller instead.
 type InboxTrackerInterface interface {
-	BlockValidatorRegistrer
 	GetDelayedMessageBytes(context.Context, uint64) ([]byte, error)
 	GetBatchMessageCount(seqNum uint64) (arbutil.MessageIndex, error)
 	GetBatchAcc(seqNum uint64) (common.Hash, error)
@@ -64,7 +67,7 @@ type InboxTrackerInterface interface {
 
 type TransactionStreamerInterface interface {
 	BlockValidatorRegistrer
-	GetProcessedMessageCount() (arbutil.MessageIndex, error)
+	GetProcessedMessageCount(ctx context.Context) (arbutil.MessageIndex, error)
 	GetMessage(msgIdx arbutil.MessageIndex) (*arbostypes.MessageWithMetadata, error)
 	ResultAtMessageIndex(msgIdx arbutil.MessageIndex) (*execution.MessageResult, error)
 	PauseReorgs()
@@ -245,14 +248,16 @@ func NewStatelessBlockValidator(
 	var executionSpawners []validator.ExecutionSpawner
 	var boldExecutionSpawners []validator.BOLDExecutionSpawner
 	var redisValClient *redis.ValidationClient
+	var boldRedisValClient *redis.BOLDRedisExecutionClient
 
 	if config().RedisValidationClientConfig.Enabled() {
 		var err error
 		redisValClient, err = redis.NewValidationClient(&config().RedisValidationClientConfig)
-		boldExecutionSpawners = append(boldExecutionSpawners, redis.NewBOLDRedisExecutionClient(redisValClient))
 		if err != nil {
 			return nil, fmt.Errorf("creating new redis validation client: %w", err)
 		}
+		boldRedisValClient = redis.NewBOLDRedisExecutionClient(redisValClient)
+		boldExecutionSpawners = append(boldExecutionSpawners, boldRedisValClient)
 	}
 	configs := config().ValidationServerConfigs
 	for i := range configs {
@@ -276,6 +281,7 @@ func NewStatelessBlockValidator(
 		config:               config(),
 		recorder:             recorder,
 		redisValidator:       redisValClient,
+		boldRedisValidator:   boldRedisValClient,
 		inboxReader:          inboxReader,
 		inboxTracker:         inbox,
 		streamer:             streamer,
@@ -413,22 +419,28 @@ func BuildGlobalState(res execution.MessageResult, pos GlobalStatePosition) vali
 	}
 }
 
-// return the globalState position before and after processing message at the specified count
-func (v *StatelessBlockValidator) GlobalStatePositionsAtCount(count arbutil.MessageIndex) (GlobalStatePosition, GlobalStatePosition, error) {
+// GlobalStatePositionsAtMessageCount returns the global state position before and after
+// processing the message at the specified count.
+func GlobalStatePositionsAtMessageCount(tracker InboxTrackerInterface, count arbutil.MessageIndex) (GlobalStatePosition, GlobalStatePosition, error) {
 	if count == 0 {
 		return GlobalStatePosition{}, GlobalStatePosition{}, errors.New("no initial state for count==0")
 	}
 	if count == 1 {
 		return GlobalStatePosition{}, GlobalStatePosition{1, 0}, nil
 	}
-	batch, found, err := v.inboxTracker.FindInboxBatchContainingMessage(count - 1)
+	batch, found, err := tracker.FindInboxBatchContainingMessage(count - 1)
 	if err != nil {
 		return GlobalStatePosition{}, GlobalStatePosition{}, err
 	}
 	if !found {
 		return GlobalStatePosition{}, GlobalStatePosition{}, errors.New("batch not found on L1 yet")
 	}
-	return GlobalStatePositionsAtCount(v.inboxTracker, count, batch)
+	return GlobalStatePositionsAtCount(tracker, count, batch)
+}
+
+// return the globalState position before and after processing message at the specified count
+func (v *StatelessBlockValidator) GlobalStatePositionsAtCount(count arbutil.MessageIndex) (GlobalStatePosition, GlobalStatePosition, error) {
+	return GlobalStatePositionsAtMessageCount(v.inboxTracker, count)
 }
 
 func (v *StatelessBlockValidator) CreateReadyValidationEntry(ctx context.Context, pos arbutil.MessageIndex, wasmTargets ...rawdb.WasmTarget) (*validationEntry, error) {

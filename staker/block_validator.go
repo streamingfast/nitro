@@ -209,8 +209,8 @@ func (c *BlockValidatorConfig) Validate() error {
 			}
 		}
 	}
-	if c.Dangerous.Revalidation.EndBlock > 0 && c.Dangerous.Revalidation.EndBlock < c.Dangerous.Revalidation.StartBlock {
-		return fmt.Errorf("revalidation end block %d is before start block %d", c.Dangerous.Revalidation.EndBlock, c.Dangerous.Revalidation.StartBlock)
+	if c.Dangerous.Revalidation.EndBatch > 0 && c.Dangerous.Revalidation.EndBatch < c.Dangerous.Revalidation.StartBatch {
+		return fmt.Errorf("revalidation end batch %d is before start batch %d", c.Dangerous.Revalidation.EndBatch, c.Dangerous.Revalidation.StartBatch)
 	}
 	return nil
 }
@@ -220,9 +220,10 @@ type BlockValidatorDangerousConfig struct {
 	Revalidation         RevalidationConfig `koanf:"revalidation"`
 }
 
+// RevalidationConfig bounds are batch numbers, not block numbers.
 type RevalidationConfig struct {
-	StartBlock            uint64 `koanf:"start-block"`
-	EndBlock              uint64 `koanf:"end-block"`
+	StartBatch            uint64 `koanf:"start-batch"`
+	EndBatch              uint64 `koanf:"end-batch"`
 	QuitAfterRevalidation bool   `koanf:"quit-after-revalidation"`
 }
 
@@ -255,8 +256,8 @@ func BlockValidatorDangerousConfigAddOptions(prefix string, f *pflag.FlagSet) {
 }
 
 func RevalidationConfigAddOptions(prefix string, f *pflag.FlagSet) {
-	f.Uint64(prefix+".start-block", DefaultBlockValidatorDangerousConfig.Revalidation.StartBlock, "start revalidation from this block")
-	f.Uint64(prefix+".end-block", DefaultBlockValidatorDangerousConfig.Revalidation.EndBlock, "end revalidation at this block")
+	f.Uint64(prefix+".start-batch", DefaultBlockValidatorDangerousConfig.Revalidation.StartBatch, "batch number to start revalidation from (batch number, not block number); 0 disables revalidation")
+	f.Uint64(prefix+".end-batch", DefaultBlockValidatorDangerousConfig.Revalidation.EndBatch, "batch number to end revalidation at (batch number, not block number); 0 keeps validating without stopping")
 	f.Bool(prefix+".quit-after-revalidation", DefaultBlockValidatorDangerousConfig.Revalidation.QuitAfterRevalidation, "exit node after revalidation is done")
 }
 
@@ -308,8 +309,8 @@ var DefaultBlockValidatorDangerousConfig = BlockValidatorDangerousConfig{
 }
 
 var DefaultRevalidationConfig = RevalidationConfig{
-	StartBlock:            0,
-	EndBlock:              0,
+	StartBatch:            0,
+	EndBatch:              0,
 	QuitAfterRevalidation: false,
 }
 
@@ -396,9 +397,8 @@ func NewBlockValidator(
 		}
 	}
 	ret.streamer = streamer
-	ret.inboxTracker = inbox
 	streamer.SetBlockValidator(ret)
-	inbox.SetBlockValidator(ret)
+	ret.inboxTracker = inbox
 	if config().MemoryFreeLimit != "" {
 		limitchecker, err := resourcemanager.NewCgroupsMemoryLimitCheckerIfSupported(config().memoryFreeLimit)
 		if err != nil {
@@ -527,7 +527,7 @@ var ErrGlobalStateNotInChain = errors.New("globalstate not in chain")
 
 // false if chain not caught up to globalstate
 // error is ErrGlobalStateNotInChain if globalstate not in chain (and chain caught up)
-func GlobalStateToMsgCount(tracker InboxTrackerInterface, streamer TransactionStreamerInterface, gs validator.GoGlobalState) (bool, arbutil.MessageIndex, error) {
+func GlobalStateToMsgCount(ctx context.Context, tracker InboxTrackerInterface, streamer TransactionStreamerInterface, gs validator.GoGlobalState) (bool, arbutil.MessageIndex, error) {
 	batchCount, err := tracker.GetBatchCount()
 	if err != nil {
 		return false, 0, err
@@ -557,7 +557,7 @@ func GlobalStateToMsgCount(tracker InboxTrackerInterface, streamer TransactionSt
 			return false, 0, fmt.Errorf("%w: batch %d posInBatch %d, maxPosInBatch %d", ErrGlobalStateNotInChain, gs.Batch, gs.PosInBatch, curBatchMsgCount-prevBatchMsgCount)
 		}
 	}
-	processed, err := streamer.GetProcessedMessageCount()
+	processed, err := streamer.GetProcessedMessageCount(ctx)
 	if err != nil {
 		return false, 0, err
 	}
@@ -642,7 +642,7 @@ func (v *BlockValidator) createNextValidationEntry(ctx context.Context) (bool, e
 		log.Trace("create validation entry: nothing to do", "pos", pos, "validated", v.validated())
 		return false, nil
 	}
-	streamerMsgCount, err := v.streamer.GetProcessedMessageCount()
+	streamerMsgCount, err := v.streamer.GetProcessedMessageCount(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -736,8 +736,8 @@ func (v *BlockValidator) createNextValidationEntry(ctx context.Context) (bool, e
 
 func (v *BlockValidator) iterativeValidationEntryCreator(ctx context.Context, ignored struct{}) time.Duration {
 	moreWork, err := v.createNextValidationEntry(ctx)
-	if err != nil {
-		processed, processedErr := v.streamer.GetProcessedMessageCount()
+	if err != nil && ctx.Err() == nil {
+		processed, processedErr := v.streamer.GetProcessedMessageCount(ctx)
 		log.Error("error trying to create validation node", "err", err, "created", v.created()+1, "processed", processed, "processedErr", processedErr)
 	}
 	if moreWork {
@@ -867,8 +867,8 @@ func (v *BlockValidator) iterativeValidationPrint(ctx context.Context) time.Dura
 	log.Info("validated execution", "messageCount", printedCount, "globalstate", validated.GlobalState, "WasmRoots", validated.WasmRoots)
 	v.lastValidInfoPrinted = validated
 	revalidationConfig := v.config().Dangerous.Revalidation
-	if revalidationConfig.EndBlock > 0 && validated.GlobalState.Batch >= revalidationConfig.EndBlock {
-		log.Info("revalidation done", "startBlock", revalidationConfig.StartBlock, "endBlock", revalidationConfig.EndBlock)
+	if revalidationConfig.EndBatch > 0 && validated.GlobalState.Batch >= revalidationConfig.EndBatch {
+		log.Info("revalidation done", "startBatch", revalidationConfig.StartBatch, "endBatch", revalidationConfig.EndBatch)
 		if revalidationConfig.QuitAfterRevalidation {
 			// Sending nil to fatalErr channel to stop the node, but not report as an error
 			// since this is expected shutdown of the node.
@@ -1297,6 +1297,50 @@ func (v *BlockValidator) Reorg(ctx context.Context, count arbutil.MessageIndex) 
 	return nil
 }
 
+var (
+	errRevalidationStartBatchNotFound = errors.New("revalidation start batch not found")
+	errRevalidationMovesForward       = errors.New("revalidation start batch is ahead of the last validated state")
+)
+
+// rewindValidationToBatch moves the last validated state back to the start of
+// startBatch, so that validation runs again from there. Revalidation only ever
+// moves backwards: moving it forward would mark everything in between as validated
+// without validating it, which is what --node.bold.dangerous.assume-valid is for.
+// It returns errRevalidationStartBatchNotFound if the inbox tracker doesn't know
+// that batch yet, or errRevalidationMovesForward if it isn't behind us.
+func (v *BlockValidator) rewindValidationToBatch(startBatch uint64) error {
+	batchCount, err := v.inboxTracker.GetBatchCount()
+	if err != nil {
+		return err
+	}
+	if startBatch >= batchCount {
+		if batchCount == 0 {
+			return fmt.Errorf("%w: batch %d requested, no batches are known yet", errRevalidationStartBatchNotFound, startBatch)
+		}
+		return fmt.Errorf("%w: batch %d requested, last known batch is %d", errRevalidationStartBatchNotFound, startBatch, batchCount-1)
+	}
+	messageCount, err := v.inboxTracker.GetBatchMessageCount(startBatch - 1)
+	if err != nil {
+		return err
+	}
+	res := &execution.MessageResult{}
+	if messageCount > 0 {
+		res, err = v.streamer.ResultAtMessageIndex(messageCount - 1)
+		if err != nil {
+			return err
+		}
+	}
+	_, endPos, err := v.StatelessBlockValidator.GlobalStatePositionsAtCount(messageCount)
+	if err != nil {
+		return err
+	}
+	gs := BuildGlobalState(*res, endPos)
+	if v.validGSIsNew(gs) {
+		return fmt.Errorf("%w: batch %d requested, last validated %d (pos %d)", errRevalidationMovesForward, startBatch, v.lastValidGS.Batch, v.lastValidGS.PosInBatch)
+	}
+	return v.writeLastValidated(gs, nil)
+}
+
 // Initialize must be called after SetCurrentWasmModuleRoot sets the current one
 func (v *BlockValidator) Initialize(ctx context.Context) error {
 	config := v.config()
@@ -1314,26 +1358,13 @@ func (v *BlockValidator) Initialize(ctx context.Context) error {
 			PosInBatch: 0,
 		}
 	}
-	if config.Dangerous.Revalidation.StartBlock > 0 {
-		startBlock := config.Dangerous.Revalidation.StartBlock
-		messageCount, err := v.inboxTracker.GetBatchMessageCount(startBlock - 1)
-		if err != nil {
-			return err
-		}
-		res := &execution.MessageResult{}
-		if messageCount > 0 {
-			res, err = v.streamer.ResultAtMessageIndex(messageCount - 1)
-			if err != nil {
-				return err
-			}
-		}
-		_, endPos, err := v.StatelessBlockValidator.GlobalStatePositionsAtCount(messageCount)
-		if err != nil {
-			return err
-		}
-		gs := BuildGlobalState(*res, endPos)
-		err = v.writeLastValidated(gs, nil)
-		if err != nil {
+	if startBatch := config.Dangerous.Revalidation.StartBatch; startBatch > 0 {
+		err := v.rewindValidationToBatch(startBatch)
+		// An unusable revalidation range is a bad dangerous option, not a broken
+		// node: log it and validate from where we left off.
+		if errors.Is(err, errRevalidationStartBatchNotFound) || errors.Is(err, errRevalidationMovesForward) {
+			log.Error("not revalidating, continuing normal validation", "err", err)
+		} else if err != nil {
 			return err
 		}
 	}
@@ -1376,6 +1407,12 @@ func (v *BlockValidator) Initialize(ctx context.Context) error {
 			return fmt.Errorf("starting validators: %w", err)
 		}
 	}
+	if v.boldRedisValidator != nil {
+		err := v.boldRedisValidator.StartValidators(moduleRoots)
+		if err != nil {
+			return fmt.Errorf("starting BOLD redis validators: %w", err)
+		}
+	}
 	for _, root := range moduleRoots {
 		if v.redisValidator != nil {
 			if !validator.SpawnerSupportsModule(v.redisValidator, root) {
@@ -1399,7 +1436,7 @@ func (v *BlockValidator) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (v *BlockValidator) checkLegacyValid() error {
+func (v *BlockValidator) checkLegacyValid(ctx context.Context) error {
 	v.reorgMutex.Lock()
 	defer v.reorgMutex.Unlock()
 	if v.legacyValidInfo == nil {
@@ -1425,7 +1462,7 @@ func (v *BlockValidator) checkLegacyValid() error {
 		}
 	}
 	msgCount += arbutil.MessageIndex(v.legacyValidInfo.AfterPosition.PosInBatch)
-	processedCount, err := v.streamer.GetProcessedMessageCount()
+	processedCount, err := v.streamer.GetProcessedMessageCount(ctx)
 	if err != nil {
 		return err
 	}
@@ -1469,7 +1506,7 @@ func (v *BlockValidator) checkLegacyValid() error {
 }
 
 // checks that the chain caught up to lastValidGS, used in startup
-func (v *BlockValidator) checkValidatedGSCaughtUp() (bool, error) {
+func (v *BlockValidator) checkValidatedGSCaughtUp(ctx context.Context) (bool, error) {
 	v.reorgMutex.Lock()
 	defer v.reorgMutex.Unlock()
 	if v.chainCaughtUp {
@@ -1481,7 +1518,7 @@ func (v *BlockValidator) checkValidatedGSCaughtUp() (bool, error) {
 	if v.lastValidGS.Batch == 0 {
 		return false, errors.New("lastValid not initialized. cannot validate genesis")
 	}
-	caughtUp, count, err := GlobalStateToMsgCount(v.inboxTracker, v.streamer, v.lastValidGS)
+	caughtUp, count, err := GlobalStateToMsgCount(ctx, v.inboxTracker, v.streamer, v.lastValidGS)
 	if err != nil {
 		return false, err
 	}
@@ -1501,8 +1538,11 @@ func (v *BlockValidator) checkValidatedGSCaughtUp() (bool, error) {
 				batchMsgCount = 0
 			}
 		}
-		processedMsgCount, err := v.streamer.GetProcessedMessageCount()
+		processedMsgCount, err := v.streamer.GetProcessedMessageCount(ctx)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return false, ctxErr
+			}
 			log.Error("failed reading processedMsgCount", "err", err)
 			processedMsgCount = 0
 		}
@@ -1528,12 +1568,12 @@ func (v *BlockValidator) checkValidatedGSCaughtUp() (bool, error) {
 
 func (v *BlockValidator) LaunchWorkthreadsWhenCaughtUp(ctx context.Context) {
 	for {
-		err := v.checkLegacyValid()
-		if err != nil {
+		err := v.checkLegacyValid(ctx)
+		if err != nil && ctx.Err() == nil {
 			log.Error("validator got error updating legacy validated info. Consider restarting with dangerous.reset-block-validation", "err", err)
 		}
-		caughtUp, err := v.checkValidatedGSCaughtUp()
-		if err != nil {
+		caughtUp, err := v.checkValidatedGSCaughtUp(ctx)
+		if err != nil && ctx.Err() == nil {
 			log.Error("validator got error waiting for chain to catch up. Consider restarting with dangerous.reset-block-validation", "err", err)
 		}
 		if caughtUp {

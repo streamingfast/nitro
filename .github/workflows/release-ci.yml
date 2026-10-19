@@ -11,7 +11,8 @@ permissions:
 jobs:
   build_and_run:
     if: false
-    runs-on: arbitrator-ci
+    runs-on: ocl-16cpu-64ram-dind-500gi
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -23,9 +24,14 @@ jobs:
           app-private-key: ${{ secrets.NITRO_CI_APP_PRIVATE_KEY }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4
         with:
           driver-opts: network=host
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["registry-cache.registry-cache.svc.cluster.local:5000"]
+            [registry."registry-cache.registry-cache.svc.cluster.local:5000"]
+              http = true
 
       - name: Cache Docker layers
         uses: actions/cache@v5

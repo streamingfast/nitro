@@ -1,25 +1,55 @@
 // Copyright 2021-2026, Offchain Labs, Inc.
 // For license information, see https://github.com/OffchainLabs/nitro/blob/master/LICENSE.md
 
-#[cfg(not(feature = "cc_brotli"))]
 fn main() {
-    use std::env;
-
-    let target_arch = env::var("TARGET").unwrap();
-
-    if target_arch.contains("wasm32") {
-        println!("cargo:rustc-link-search=target/lib-wasm/");
-    } else {
-        println!("cargo:rustc-link-search=target/lib/");
+    // Without `link` nothing is compiled or linked: brotli is reached through the
+    // `arbcompress` host imports, which only exist on wasm targets. Note: build scripts
+    // run on the host, so the target must be read from the environment, not via cfg.
+    if std::env::var_os("CARGO_FEATURE_LINK").is_none() {
+        let target = std::env::var("TARGET").unwrap();
+        assert!(
+            target.contains("wasm32"),
+            "the `link` feature is required for non-wasm targets"
+        );
+        return;
     }
+    link();
+}
+
+#[cfg(not(feature = "cc_brotli"))]
+fn link() {
+    use std::path::PathBuf;
+
+    let target = std::env::var("TARGET").unwrap();
+    // Anchor the search path to this crate's location so it resolves from any
+    // consuming workspace (the root repo, nitro-reth, SP1), not just when cargo
+    // happens to run at the repo root. The libs come from `scripts/build-brotli.sh`.
+    let repo_root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../..");
+    let lib_dir = if target.contains("wasm32") {
+        "target/lib-wasm"
+    } else if target.contains("riscv64") {
+        "target/lib-sp1/lib"
+    } else {
+        "target/lib"
+    };
+    println!(
+        "cargo:rustc-link-search={}",
+        repo_root.join(lib_dir).display()
+    );
     println!("cargo:rustc-link-lib=static=brotlienc-static");
     println!("cargo:rustc-link-lib=static=brotlidec-static");
     println!("cargo:rustc-link-lib=static=brotlicommon-static");
 }
 
 #[cfg(feature = "cc_brotli")]
-fn main() {
+fn link() {
     use std::{env, path::PathBuf};
+
+    assert!(
+        !env::var("TARGET").unwrap().contains("wasm32"),
+        "cc_brotli cannot target wasm; wasm builds link prebuilt libs or use host imports"
+    );
+
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let include_dir = manifest_dir.join("../../brotli/c/include");
     cc::Build::new()
@@ -63,5 +93,5 @@ fn main() {
         .compile("brotli");
 
     println!("cargo:include={}", include_dir.display());
-    println!("cargo:rerun-if-changed=brotli/c");
+    println!("cargo:rerun-if-changed=../../brotli/c");
 }

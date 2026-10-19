@@ -1,2 +1,2 @@
 ### Ignored
-- fix wasmer tables for stylus
+- wasmer tables fix

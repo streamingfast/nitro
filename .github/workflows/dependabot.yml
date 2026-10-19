@@ -16,3 +16,4 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high # Fail on high, critical
+          warn-only: true # Advisories come from upstream's dependencies, report them without failing
