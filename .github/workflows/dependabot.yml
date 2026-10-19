@@ -16,4 +16,5 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high # Fail on high, critical
-          allow-ghsas: GHSA-vj64-rjf3-w3v7 # p3-challenger in upstream crates/sp1
+          # Upstream dependencies of crates/sp1: p3-challenger, quinn-proto
+          allow-ghsas: GHSA-vj64-rjf3-w3v7, GHSA-4w2j-m93h-cj5j
