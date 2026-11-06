@@ -1,4 +1,9 @@
-## Unreleased
+## v3.12.2-fh3.0
+
+* Bumped to [3.12.2](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.2).
+* Updated `go-ethereum` to [1927c192f0](https://github.com/streamingfast/go-ethereum/commit/1927c192f0fa59a6584fe65d9fe2b0675275b201), which brings the go-ethereum revision pinned by nitro v3.12.2 (freezer fixes only, no Firehose change).
+
+## v3.12.1-fh3.0
 
 * Bumped to [3.12.1](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.1).
     * Also contains [3.12.0](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.0) and [3.11.5](https://github.com/OffchainLabs/nitro/releases/tag/v3.11.5).
