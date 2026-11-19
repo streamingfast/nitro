@@ -1,3 +1,9 @@
+## v3.12.4-fh3.0
+
+* Bumped to [3.12.4](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.4).
+    * Also contains [3.12.3](https://github.com/OffchainLabs/nitro/blob/v3.12.4/CHANGELOG.md), which has no GitHub release.
+* Updated `go-ethereum` to [fec47e1024](https://github.com/streamingfast/go-ethereum/commit/fec47e10248fe892fc98e8905ffddb76b4eb1297), which brings the go-ethereum revision pinned by nitro v3.12.4 (JSON-RPC decoding, database close and JS tracer fixes, no Firehose change).
+
 ## v3.12.2-fh3.0
 
 * Bumped to [3.12.2](https://github.com/OffchainLabs/nitro/releases/tag/v3.12.2).
