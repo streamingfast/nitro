@@ -4,7 +4,61 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
-## [v3.12.2](https://github.com/OffchainLabs/nitro/compare/v3.12.1...v3.12.2) - 2026-10-09
+## [v3.12.4](https://github.com/OffchainLabs/nitro/compare/v3.12.3...v3.12.4) - 2026-11-09
+
+### Configuration
+
+- Added `tx-pre-checker.max-pending-conditional-txs`, hot-reloadable; 0 (the default) disables the cap. [[commit]](https://github.com/OffchainLabs/nitro/commit/7df16069311c86fed59149bd89f065cd48c87210)
+
+### Added
+
+- A node can cap conditional transactions in flight, rejecting extras with RPC error -32012. [[commit]](https://github.com/OffchainLabs/nitro/commit/7df16069311c86fed59149bd89f065cd48c87210)
+- Added metric `arb/txprechecker/conditionaltx/pending/gauge`. [[commit]](https://github.com/OffchainLabs/nitro/commit/7df16069311c86fed59149bd89f065cd48c87210)
+- Added metric `arb/txprechecker/conditionaltx/rejected/pendingcap/counter`. [[commit]](https://github.com/OffchainLabs/nitro/commit/7df16069311c86fed59149bd89f065cd48c87210)
+
+### Changed
+
+- JSON-RPC methods now reject `null` for a required argument, such as the transaction in `eth_call`. [[commit]](https://github.com/OffchainLabs/nitro/commit/e6058e2f3c1504a3759072884a0a1c4e7a3646de)
+
+### Fixed
+
+- Speed up JSON-RPC request decoding, which stalled block production during large request bursts. [[commit]](https://github.com/OffchainLabs/nitro/commit/e6058e2f3c1504a3759072884a0a1c4e7a3646de)
+
+## [v3.12.3](https://github.com/OffchainLabs/nitro/compare/v3.12.2...v3.12.3) - 2026-10-26
+
+### Configuration
+
+- Add `--execution.sequencer.fifo.size-sampling-max-exponent`. [[commit]](https://github.com/OffchainLabs/nitro/commit/e019b4e6dd4121411191a44cf864652280cd9e0b)
+- Add `--execution.sequencer.fifo.size-sampling-grace-blocks`. [[commit]](https://github.com/OffchainLabs/nitro/commit/e019b4e6dd4121411191a44cf864652280cd9e0b)
+- Add `--execution.sequencer.fifo.size-sampling-min-tx-size`. [[commit]](https://github.com/OffchainLabs/nitro/commit/e019b4e6dd4121411191a44cf864652280cd9e0b)
+- Add `--execution.sequencer.reject-noop-replacements`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- Add `--execution.sequencer.pga.min-priority-fee-percent-bump-to-replace`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+
+### Added
+
+- Add metric `arb/sequencer/fifo/sizesampling/skipped`. [[commit]](https://github.com/OffchainLabs/nitro/commit/e019b4e6dd4121411191a44cf864652280cd9e0b)
+- Add metric `arb/sequencer/fifo/sizesampling/exponent`. [[commit]](https://github.com/OffchainLabs/nitro/commit/e019b4e6dd4121411191a44cf864652280cd9e0b)
+- Add metric `arb/sequencer/pending/count/gauge`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- Add metric `arb/sequencer/pending/count/histogram`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- Add metric `arb/sequencer/pending/rejected/alreadyknown/counter`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- Add metric `arb/sequencer/pending/rejected/noncepending/counter`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- Add metric `arb/sequencer/pending/rejected/replaceunderpriced/counter`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- Add metric `arb/sequencer/pending/replaced/counter`. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+
+### Changed
+
+- Small transactions can overtake large ones after consecutive data-limited FIFO blocks. [[commit]](https://github.com/OffchainLabs/nitro/commit/e019b4e6dd4121411191a44cf864652280cd9e0b)
+- The sequencer rejects same-sender, same-nonce txs unless PGA is on and the tip is higher. [[commit]](https://github.com/OffchainLabs/nitro/commit/8c467151a18461b9cadaec5d57eddee588b4a26e)
+- A same-sender, same-nonce tx outside PGA is rejected with "replacement transaction underpriced". [[commit]](https://github.com/OffchainLabs/nitro/commit/285d657b250fbc1af246f163faf087eb6f87c7a2)
+- Feed REST backfill treats a 410 from the archive as an evicted chunk instead of retrying it. [[commit]](https://github.com/OffchainLabs/nitro/commit/f55dbeac7b06e9f09704a7a375ce17866b8f2e04)
+
+### Fixed
+
+- Fix a crash on node startup failure that hid the original startup error. [[commit]](https://github.com/OffchainLabs/nitro/commit/f792271078cfef569baf66b52d021ac06147447f)
+- Fix a panic on the first boot of a node from a downloaded snapshot. [[commit]](https://github.com/OffchainLabs/nitro/commit/f792271078cfef569baf66b52d021ac06147447f)
+- Fix crashes when a database is closed while a background task is still reading it. [[commit]](https://github.com/OffchainLabs/nitro/commit/f792271078cfef569baf66b52d021ac06147447f)
+
+## [v3.12.2](https://github.com/OffchainLabs/nitro/compare/v3.12.1...v3.12.2) - 2026-10-14
 
 ### Added
 
@@ -14,6 +68,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 - Fix for head truncation below a diverged tail group. [[commit]](https://github.com/OffchainLabs/nitro/commit/c9f1ccf374a12eb3d91c84e6f0178da6a8795848)
 - The sequencer survives a panic while sequencing a delayed message, retrying it after a minute. [[commit]](https://github.com/OffchainLabs/nitro/commit/498ce18fcba28eba8f0a6594ea95522b60c61ad2)
+- Returning to 3.12.x after running 3.11.x no longer deletes recent blocks. [[commit]](https://github.com/OffchainLabs/nitro/commit/5f02f3f03076343061f167e81b8e82ec5518064b)
 
 ## [v3.12.1](https://github.com/OffchainLabs/nitro/compare/v3.12.0...v3.12.1) - 2026-09-29
 

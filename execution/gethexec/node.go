@@ -176,6 +176,9 @@ func (c *Config) Validate() error {
 	if err := c.Sequencer.Validate(); err != nil {
 		return err
 	}
+	if err := c.TxPreChecker.Validate(); err != nil {
+		return err
+	}
 	if !c.Sequencer.Enable && c.ForwardingTarget == "" {
 		return errors.New("ForwardingTarget not set and not sequencer (can use \"null\")")
 	}
@@ -303,6 +306,7 @@ type ExecutionNode struct {
 	ParentChain              *parent.ParentChain
 	ClassicOutbox            *ClassicOutboxRetriever
 	started                  atomic.Bool
+	stopped                  atomic.Bool
 	bulkBlockMetadataFetcher *BulkBlockMetadataFetcher
 	consensusRPCClient       *consensusrpcclient.ConsensusRPCClient
 	filteringReportRPCClient *FilteringReportRPCClient
@@ -619,10 +623,6 @@ func (n *ExecutionNode) Initialize(ctx context.Context) error {
 		return fmt.Errorf("error initializing execution engine: %w", err)
 	}
 	n.ArbInterface.Initialize(n)
-	err = n.Backend.Start()
-	if err != nil {
-		return fmt.Errorf("error starting geth backend: %w", err)
-	}
 	err = n.TxPublisher.Initialize(ctx)
 	if err != nil {
 		return fmt.Errorf("error initializing transaction publisher: %w", err)
@@ -650,6 +650,11 @@ func (n *ExecutionNode) Start(ctxIn context.Context) error {
 
 	if n.started.Swap(true) {
 		return errors.New("already started")
+	}
+	// The backend spawns background workers (filtermaps indexer) that write to
+	// the chain database, so it must not start before the stack is up.
+	if err := n.Backend.Start(); err != nil {
+		return fmt.Errorf("error starting geth backend: %w", err)
 	}
 	if n.consensusRPCClient != nil {
 		if err := n.consensusRPCClient.Start(ctx); err != nil {
@@ -693,7 +698,19 @@ func (n *ExecutionNode) Start(ctxIn context.Context) error {
 }
 
 func (n *ExecutionNode) StopAndWait() {
+	// BlockChain.Stop and Backend.Stop are not safe to call twice, and a
+	// startup failure can leave both the failure unwind and the caller's own
+	// cleanup pointing at this node.
+	if n.stopped.Swap(true) {
+		return
+	}
 	if !n.started.Load() {
+		// The blockchain's background workers (tx indexer, snapshot generator)
+		// are launched by core.NewBlockChain, not by Start, so they are running
+		// even if this node never started. They write to the chain database, and
+		// a write against a closed database is a log.Crit or a panic, so they
+		// must be stopped before the caller closes it.
+		n.ArbInterface.BlockChain().Stop()
 		n.closeRecorder()
 		return
 	}
@@ -725,7 +742,7 @@ func (n *ExecutionNode) StopAndWait() {
 	if n.filteringReportRPCClient != nil {
 		n.filteringReportRPCClient.StopAndWait()
 	}
-	n.ArbInterface.BlockChain().Stop() // does nothing if not running
+	n.ArbInterface.BlockChain().Stop()
 	if err := n.Backend.Stop(); err != nil {
 		log.Error("backend stop", "err", err)
 	}
